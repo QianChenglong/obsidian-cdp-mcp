@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2024-12-18
+
+### Added
+
+- GitHub Actions for CI (build on Node 18/20/22)
+- GitHub Actions for automatic npm publishing on tag push
+
 ## [1.0.0] - 2024-12-18
 
 ### Added
@@ -33,5 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic reconnection on connection loss
 - Support for CodeBuddy Code and Claude Desktop
 
-[Unreleased]: https://github.com/QianChenglong/obsidian-cdp-mcp/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/QianChenglong/obsidian-cdp-mcp/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/QianChenglong/obsidian-cdp-mcp/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/QianChenglong/obsidian-cdp-mcp/releases/tag/v1.0.0
