@@ -1,0 +1,178 @@
+# Obsidian CDP MCP Server
+
+[English](README.md) | [中文](README.zh-CN.md)
+
+通过 Chrome DevTools Protocol (CDP) 连接 Obsidian，提供 MCP 工具接口。
+
+## 特性
+
+相比 REST API，CDP 方式提供了更强大的能力：
+
+| 能力 | CDP | REST API |
+|:---|:---:|:---:|
+| 读写文件 | ✅ | ✅ |
+| **实时控制台输出** | ✅ | ❌ |
+| **DOM 检查/操作** | ✅ | ❌ |
+| **截图** | ✅ | ❌ |
+| **执行任意 JS** | ✅ | ❌ |
+| 插件管理 | ✅ | ❌ |
+| 命令执行 | ✅ | ✅ |
+
+## 前置条件
+
+**Obsidian 必须以调试模式启动**：
+
+```bash
+# macOS
+open -a Obsidian --args --remote-debugging-port=9222
+
+# 或直接运行
+/Applications/Obsidian.app/Contents/MacOS/Obsidian --remote-debugging-port=9222
+```
+
+## 安装
+
+```bash
+# 克隆并安装
+git clone <repo-url> obsidian-cdp-mcp
+cd obsidian-cdp-mcp
+npm install
+npm run build
+
+# 全局链接（推荐）
+npm link
+```
+
+安装后可直接使用 `obsidian-cdp-mcp` 命令。
+
+## MCP 配置
+
+### CodeBuddy Code
+
+在 `~/.codebuddy/settings.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "obsidian-cdp": {
+      "command": "obsidian-cdp-mcp",
+      "env": {
+        "OBSIDIAN_DEBUG_PORT": "9222"
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+在 `~/Library/Application Support/Claude/claude_desktop_config.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "obsidian-cdp": {
+      "command": "obsidian-cdp-mcp",
+      "env": {
+        "OBSIDIAN_DEBUG_PORT": "9222"
+      }
+    }
+  }
+}
+```
+
+## 可用工具
+
+### 基础操作
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_get_vault_info` | 获取 vault 信息 |
+| `obsidian_get_active_file` | 获取当前打开的文件 |
+| `obsidian_read_file` | 读取文件内容 |
+| `obsidian_write_file` | 写入/创建文件 |
+| `obsidian_search` | 搜索文件 |
+| `obsidian_open_file` | 打开文件 |
+
+### 调试能力 (CDP 独有)
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_screenshot` | 截取 Obsidian 界面 |
+| `obsidian_console` | 获取控制台输出 |
+| `obsidian_eval` | 执行任意 JavaScript |
+| `obsidian_dom_query` | 查询 DOM 元素 |
+
+### 插件和命令
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_list_plugins` | 列出所有插件 |
+| `obsidian_list_commands` | 列出所有命令 |
+| `obsidian_execute_command` | 执行命令 |
+
+## 使用示例
+
+### 截图
+
+```json
+{
+  "name": "obsidian_screenshot",
+  "arguments": { "format": "png" }
+}
+```
+
+### 获取控制台日志
+
+```json
+{
+  "name": "obsidian_console",
+  "arguments": { "limit": 20, "type": "error" }
+}
+```
+
+### 执行 JavaScript
+
+```json
+{
+  "name": "obsidian_eval",
+  "arguments": {
+    "code": "app.workspace.getActiveFile()?.path"
+  }
+}
+```
+
+### 搜索文件
+
+```json
+{
+  "name": "obsidian_search",
+  "arguments": { "query": "mcp", "limit": 10 }
+}
+```
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+|:---|:---|:---|
+| `OBSIDIAN_DEBUG_PORT` | `9222` | Obsidian 调试端口 |
+
+## 故障排除
+
+### Obsidian not found
+
+确保 Obsidian 以调试模式运行：
+
+```bash
+curl http://localhost:9222/json
+```
+
+应该返回包含 Obsidian 页面信息的 JSON。
+
+### Connection refused
+
+检查端口是否正确，或 Obsidian 是否被防火墙阻止。
+
+## License
+
+MIT

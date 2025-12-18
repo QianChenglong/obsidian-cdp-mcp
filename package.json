@@ -1,0 +1,43 @@
+{
+  "name": "obsidian-cdp-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server for Obsidian via Chrome DevTools Protocol",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "obsidian-cdp-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "keywords": ["obsidian", "mcp", "cdp", "devtools", "chrome-devtools-protocol", "model-context-protocol"],
+  "license": "MIT",
+  "author": "QianChenglong",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QianChenglong/obsidian-cdp-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/QianChenglong/obsidian-cdp-mcp/issues"
+  },
+  "homepage": "https://github.com/QianChenglong/obsidian-cdp-mcp#readme",
+  "engines": {
+    "node": ">=18"
+  }
+}
