@@ -32,24 +32,53 @@ open -a Obsidian --args --remote-debugging-port=9222
 
 ## Installation
 
-```bash
-# Clone and install
-git clone <repo-url> obsidian-cdp-mcp
-cd obsidian-cdp-mcp
-npm install
-npm run build
+### Using npx (No Installation Required)
 
-# Global link (recommended)
-npm link
+You can use `npx` to run the server directly without installing:
+
+```bash
+npx obsidian-cdp-mcp
+```
+
+### Global Installation
+
+```bash
+npm install -g obsidian-cdp-mcp
 ```
 
 After installation, you can use the `obsidian-cdp-mcp` command directly.
+
+### From Source
+
+```bash
+git clone https://github.com/QianChenglong/obsidian-cdp-mcp.git
+cd obsidian-cdp-mcp
+npm install
+npm run build
+npm link
+```
 
 ## MCP Configuration
 
 ### CodeBuddy Code
 
 Add to `~/.codebuddy/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "obsidian-cdp": {
+      "command": "npx",
+      "args": ["obsidian-cdp-mcp"],
+      "env": {
+        "OBSIDIAN_DEBUG_PORT": "9222"
+      }
+    }
+  }
+}
+```
+
+Or if installed globally:
 
 ```json
 {
@@ -72,7 +101,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "obsidian-cdp": {
-      "command": "obsidian-cdp-mcp",
+      "command": "npx",
+      "args": ["obsidian-cdp-mcp"],
       "env": {
         "OBSIDIAN_DEBUG_PORT": "9222"
       }

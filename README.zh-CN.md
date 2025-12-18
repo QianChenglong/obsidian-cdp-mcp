@@ -32,24 +32,53 @@ open -a Obsidian --args --remote-debugging-port=9222
 
 ## 安装
 
-```bash
-# 克隆并安装
-git clone <repo-url> obsidian-cdp-mcp
-cd obsidian-cdp-mcp
-npm install
-npm run build
+### 使用 npx（无需安装）
 
-# 全局链接（推荐）
-npm link
+可以直接使用 `npx` 运行，无需安装：
+
+```bash
+npx obsidian-cdp-mcp
+```
+
+### 全局安装
+
+```bash
+npm install -g obsidian-cdp-mcp
 ```
 
 安装后可直接使用 `obsidian-cdp-mcp` 命令。
+
+### 从源码安装
+
+```bash
+git clone https://github.com/QianChenglong/obsidian-cdp-mcp.git
+cd obsidian-cdp-mcp
+npm install
+npm run build
+npm link
+```
 
 ## MCP 配置
 
 ### CodeBuddy Code
 
 在 `~/.codebuddy/settings.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "obsidian-cdp": {
+      "command": "npx",
+      "args": ["obsidian-cdp-mcp"],
+      "env": {
+        "OBSIDIAN_DEBUG_PORT": "9222"
+      }
+    }
+  }
+}
+```
+
+或者如果已全局安装：
 
 ```json
 {
@@ -72,7 +101,8 @@ npm link
 {
   "mcpServers": {
     "obsidian-cdp": {
-      "command": "obsidian-cdp-mcp",
+      "command": "npx",
+      "args": ["obsidian-cdp-mcp"],
       "env": {
         "OBSIDIAN_DEBUG_PORT": "9222"
       }
