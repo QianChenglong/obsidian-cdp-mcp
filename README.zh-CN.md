@@ -121,17 +121,51 @@ npm link
 | `obsidian_get_active_file` | 获取当前打开的文件 |
 | `obsidian_read_file` | 读取文件内容 |
 | `obsidian_write_file` | 写入/创建文件 |
-| `obsidian_search` | 搜索文件 |
+| `obsidian_search` | 按路径搜索文件 |
+| `obsidian_omnisearch` | 全文搜索（需要 Omnisearch 插件） |
 | `obsidian_open_file` | 打开文件 |
 
-### 调试能力 (CDP 独有)
+### 文件和文件夹管理
 
 | 工具 | 说明 |
 |:---|:---|
-| `obsidian_screenshot` | 截取 Obsidian 界面 |
-| `obsidian_console` | 获取控制台输出 |
-| `obsidian_eval` | 执行任意 JavaScript |
-| `obsidian_dom_query` | 查询 DOM 元素 |
+| `obsidian_list_folder` | 列出文件夹内容 |
+| `obsidian_create_folder` | 创建新文件夹 |
+| `obsidian_move_file` | 移动或重命名文件/文件夹 |
+| `obsidian_delete_file` | 删除文件/文件夹 |
+
+### 链接和引用
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_get_backlinks` | 获取指向文件的反向链接 |
+| `obsidian_get_outlinks` | 获取文件的外向链接 |
+| `obsidian_resolve_link` | 解析 wiki 链接为文件路径 |
+
+### 元数据和属性
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_get_tags` | 获取标签（全库或单文件） |
+| `obsidian_get_frontmatter` | 获取文件 frontmatter/YAML |
+| `obsidian_update_frontmatter` | 更新 frontmatter 属性 |
+| `obsidian_get_all_properties` | 获取库中所有属性名 |
+
+### 编辑器操作
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_get_selection` | 获取选中的文本 |
+| `obsidian_replace_selection` | 替换选中的文本 |
+| `obsidian_insert_at_cursor` | 在光标处插入文本 |
+| `obsidian_get_cursor_position` | 获取光标位置 |
+
+### 模板
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_list_templates` | 列出可用模板 |
+| `obsidian_apply_template` | 应用模板到文件 |
 
 ### 插件和命令
 
@@ -140,6 +174,16 @@ npm link
 | `obsidian_list_plugins` | 列出所有插件 |
 | `obsidian_list_commands` | 列出所有命令 |
 | `obsidian_execute_command` | 执行命令 |
+| `obsidian_dataview_query` | 运行 Dataview 查询（需要 Dataview 插件） |
+
+### 调试能力 (CDP 独有)
+
+| 工具 | 说明 |
+|:---|:---|
+| `obsidian_screenshot` | 截取 Obsidian 界面（支持 webp/png/jpeg） |
+| `obsidian_console` | 获取控制台输出 |
+| `obsidian_eval` | 执行任意 JavaScript |
+| `obsidian_dom_query` | 查询 DOM 元素 |
 
 ## 使用示例
 
@@ -148,7 +192,7 @@ npm link
 ```json
 {
   "name": "obsidian_screenshot",
-  "arguments": { "format": "png" }
+  "arguments": { "format": "webp", "quality": 80 }
 }
 ```
 

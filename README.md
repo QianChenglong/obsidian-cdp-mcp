@@ -121,25 +121,69 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | `obsidian_get_active_file` | Get currently open file |
 | `obsidian_read_file` | Read file content |
 | `obsidian_write_file` | Write/create file |
-| `obsidian_search` | Search files |
+| `obsidian_search` | Search files by path |
+| `obsidian_omnisearch` | Full-text search (requires Omnisearch plugin) |
 | `obsidian_open_file` | Open file |
 
-### Debug Capabilities (CDP Exclusive)
+### File & Folder Management
 
 | Tool | Description |
 |:---|:---|
-| `obsidian_screenshot` | Capture Obsidian interface |
-| `obsidian_console` | Get console output |
-| `obsidian_eval` | Execute arbitrary JavaScript |
-| `obsidian_dom_query` | Query DOM elements |
+| `obsidian_list_folder` | List folder contents |
+| `obsidian_create_folder` | Create new folder |
+| `obsidian_move_file` | Move or rename file/folder |
+| `obsidian_delete_file` | Delete file/folder |
 
-### Plugins and Commands
+### Links & References
+
+| Tool | Description |
+|:---|:---|
+| `obsidian_get_backlinks` | Get incoming links to a file |
+| `obsidian_get_outlinks` | Get outgoing links from a file |
+| `obsidian_resolve_link` | Resolve wiki link to file path |
+
+### Metadata & Properties
+
+| Tool | Description |
+|:---|:---|
+| `obsidian_get_tags` | Get tags (vault-wide or per file) |
+| `obsidian_get_frontmatter` | Get file frontmatter/YAML |
+| `obsidian_update_frontmatter` | Update frontmatter properties |
+| `obsidian_get_all_properties` | Get all property names in vault |
+
+### Editor Operations
+
+| Tool | Description |
+|:---|:---|
+| `obsidian_get_selection` | Get selected text |
+| `obsidian_replace_selection` | Replace selected text |
+| `obsidian_insert_at_cursor` | Insert text at cursor |
+| `obsidian_get_cursor_position` | Get cursor position |
+
+### Templates
+
+| Tool | Description |
+|:---|:---|
+| `obsidian_list_templates` | List available templates |
+| `obsidian_apply_template` | Apply template to file |
+
+### Plugins & Commands
 
 | Tool | Description |
 |:---|:---|
 | `obsidian_list_plugins` | List all plugins |
 | `obsidian_list_commands` | List all commands |
 | `obsidian_execute_command` | Execute command |
+| `obsidian_dataview_query` | Run Dataview query (requires Dataview plugin) |
+
+### Debug Capabilities (CDP Exclusive)
+
+| Tool | Description |
+|:---|:---|
+| `obsidian_screenshot` | Capture Obsidian interface (webp/png/jpeg) |
+| `obsidian_console` | Get console output |
+| `obsidian_eval` | Execute arbitrary JavaScript |
+| `obsidian_dom_query` | Query DOM elements |
 
 ## Usage Examples
 
@@ -148,7 +192,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "name": "obsidian_screenshot",
-  "arguments": { "format": "png" }
+  "arguments": { "format": "webp", "quality": 80 }
 }
 ```
 
