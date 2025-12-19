@@ -31,3 +31,7 @@ coverage/
 *.tmp
 *.temp
 .cache/
+
+# Project guidelines (local only)
+CODEBUDDY.md
+CLAUDE.md
