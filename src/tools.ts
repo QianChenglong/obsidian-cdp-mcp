@@ -1,4 +1,7 @@
 import { CDPClient } from "./cdp-client.js";
+import { writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 
 export interface ToolDefinition {
   name: string;
@@ -14,18 +17,18 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "obsidian_screenshot",
     description:
-      "Take a screenshot of the current Obsidian window. Returns base64-encoded image data.",
+      "Take a screenshot of the current Obsidian window. Saves to a temp file and returns the file path. Use webp format for best compression.",
     inputSchema: {
       type: "object",
       properties: {
         format: {
           type: "string",
-          enum: ["png", "jpeg"],
-          description: "Image format (default: png)",
+          enum: ["png", "jpeg", "webp"],
+          description: "Image format (default: webp for best compression)",
         },
         quality: {
           type: "number",
-          description: "JPEG quality 0-100 (only for jpeg format)",
+          description: "Image quality 0-100 for jpeg/webp (default: 80)",
         },
       },
     },
@@ -497,15 +500,26 @@ export class ToolHandler {
   ): Promise<{ content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> }> {
     switch (name) {
       case "obsidian_screenshot": {
-        const format = (args.format as "png" | "jpeg") || "png";
-        const quality = args.quality as number | undefined;
+        const format = (args.format as "png" | "jpeg" | "webp") || "webp";
+        const quality = (args.quality as number) ?? (format === "png" ? undefined : 80);
         const data = await this.cdp.screenshot(format, quality);
+        
+        // Save to temp file
+        const timestamp = Date.now();
+        const filename = `obsidian-screenshot-${timestamp}.${format}`;
+        const filepath = join(tmpdir(), filename);
+        await writeFile(filepath, Buffer.from(data, "base64"));
+        
         return {
           content: [
             {
-              type: "image",
-              data,
-              mimeType: `image/${format}`,
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                path: filepath,
+                format,
+                quality,
+              }),
             },
           ],
         };

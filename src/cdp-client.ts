@@ -156,7 +156,10 @@ export class CDPClient {
     return result.result.value;
   }
 
-  async screenshot(format: "png" | "jpeg" = "png", quality?: number): Promise<string> {
+  async screenshot(
+    format: "png" | "jpeg" | "webp" = "png",
+    quality?: number
+  ): Promise<string> {
     const result = (await this.send("Page.captureScreenshot", {
       format,
       quality,
