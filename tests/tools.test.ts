@@ -455,10 +455,22 @@ describe("toolDefinitions", () => {
     expect(toolNames).toContain("obsidian_get_vault_info");
     expect(toolNames).toContain("obsidian_open_file");
     expect(toolNames).toContain("obsidian_dom_query");
+    expect(toolNames).toContain("obsidian_omnisearch");
+    expect(toolNames).toContain("obsidian_get_backlinks");
+    expect(toolNames).toContain("obsidian_get_outlinks");
+    expect(toolNames).toContain("obsidian_get_tags");
+    expect(toolNames).toContain("obsidian_get_frontmatter");
+    expect(toolNames).toContain("obsidian_update_frontmatter");
+    expect(toolNames).toContain("obsidian_dataview_query");
+    expect(toolNames).toContain("obsidian_list_folder");
+    expect(toolNames).toContain("obsidian_create_folder");
+    expect(toolNames).toContain("obsidian_move_file");
+    expect(toolNames).toContain("obsidian_delete_file");
+    expect(toolNames).toContain("obsidian_get_recent_files");
   });
 
-  it("should have 13 tools total", () => {
-    expect(toolDefinitions).toHaveLength(13);
+  it("should have 25 tools total", () => {
+    expect(toolDefinitions).toHaveLength(25);
   });
 
   it("should have valid schema for all tools", () => {

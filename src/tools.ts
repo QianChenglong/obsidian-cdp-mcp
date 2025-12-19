@@ -236,6 +236,173 @@ export const toolDefinitions: ToolDefinition[] = [
       required: ["selector"],
     },
   },
+  {
+    name: "obsidian_get_backlinks",
+    description: "Get all backlinks (incoming links) for a file. Returns files that link to the specified file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the file relative to vault root",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "obsidian_get_outlinks",
+    description: "Get all outgoing links from a file. Returns files that the specified file links to.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the file relative to vault root",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "obsidian_get_tags",
+    description: "Get all tags in the vault with their usage count, or get tags for a specific file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Optional: Path to a specific file to get tags from. If not provided, returns all tags in vault.",
+        },
+      },
+    },
+  },
+  {
+    name: "obsidian_get_frontmatter",
+    description: "Get the frontmatter (YAML metadata) of a file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the file relative to vault root",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "obsidian_update_frontmatter",
+    description: "Update frontmatter properties of a file. Can add, modify, or delete properties.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the file relative to vault root",
+        },
+        properties: {
+          type: "object",
+          description: "Properties to update. Set value to null to delete a property.",
+        },
+      },
+      required: ["path", "properties"],
+    },
+  },
+  {
+    name: "obsidian_dataview_query",
+    description: "Execute a Dataview query (DQL) and return results. Requires Dataview plugin to be installed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Dataview query (DQL). Examples: 'LIST FROM #tag', 'TABLE file.ctime FROM \"folder\"'",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "obsidian_list_folder",
+    description: "List contents of a folder in the vault.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the folder relative to vault root. Use empty string or '/' for root.",
+        },
+        recursive: {
+          type: "boolean",
+          description: "Include subfolders recursively (default: false)",
+        },
+      },
+    },
+  },
+  {
+    name: "obsidian_create_folder",
+    description: "Create a new folder in the vault.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path for the new folder relative to vault root",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "obsidian_move_file",
+    description: "Move or rename a file/folder in the vault.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: {
+          type: "string",
+          description: "Current path of the file/folder",
+        },
+        to: {
+          type: "string",
+          description: "New path for the file/folder",
+        },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "obsidian_delete_file",
+    description: "Delete a file or folder (moves to system trash by default).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the file/folder to delete",
+        },
+        permanent: {
+          type: "boolean",
+          description: "Permanently delete instead of moving to trash (default: false)",
+        },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "obsidian_get_recent_files",
+    description: "Get list of recently opened files.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Maximum number of files to return (default: 10)",
+        },
+      },
+    },
+  },
 ];
 
 export class ToolHandler {
@@ -517,6 +684,321 @@ export class ToolHandler {
         `);
         return {
           content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_backlinks": {
+        const path = args.path as string;
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
+            if (!file) return { error: "File not found: ${path}" };
+            const backlinks = app.metadataCache.getBacklinksForFile(file);
+            if (!backlinks) return { path: "${path}", backlinks: [] };
+            const data = backlinks.data;
+            return {
+              path: "${path}",
+              backlinks: Object.entries(data).map(([filePath, links]) => ({
+                file: filePath,
+                count: links.length,
+                positions: links.slice(0, 5).map(l => ({ line: l.position?.start?.line, col: l.position?.start?.col }))
+              }))
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_outlinks": {
+        const path = args.path as string;
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
+            if (!file) return { error: "File not found: ${path}" };
+            const cache = app.metadataCache.getFileCache(file);
+            if (!cache) return { path: "${path}", outlinks: [] };
+            const links = cache.links || [];
+            const embeds = cache.embeds || [];
+            return {
+              path: "${path}",
+              outlinks: links.map(l => ({
+                link: l.link,
+                displayText: l.displayText,
+                resolved: !!app.metadataCache.getFirstLinkpathDest(l.link, "${path}")
+              })),
+              embeds: embeds.map(e => ({
+                link: e.link,
+                resolved: !!app.metadataCache.getFirstLinkpathDest(e.link, "${path}")
+              }))
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_tags": {
+        const path = args.path as string | undefined;
+        const escapedPath = path ? path.replace(/"/g, '\\"') : "";
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const path = "${escapedPath}";
+            if (path) {
+              const file = app.vault.getAbstractFileByPath(path);
+              if (!file) return { error: "File not found: " + path };
+              const cache = app.metadataCache.getFileCache(file);
+              if (!cache) return { path, tags: [] };
+              const tags = cache.tags?.map(t => t.tag) || [];
+              const frontmatterTags = cache.frontmatter?.tags || [];
+              return {
+                path,
+                tags: [...new Set([...tags, ...(Array.isArray(frontmatterTags) ? frontmatterTags : [frontmatterTags])])]
+              };
+            } else {
+              const allTags = app.metadataCache.getTags();
+              return {
+                tags: Object.entries(allTags)
+                  .map(([tag, count]) => ({ tag, count }))
+                  .sort((a, b) => b.count - a.count)
+              };
+            }
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_frontmatter": {
+        const path = args.path as string;
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
+            if (!file) return { error: "File not found: ${path}" };
+            const cache = app.metadataCache.getFileCache(file);
+            return {
+              path: "${path}",
+              frontmatter: cache?.frontmatter || null,
+              position: cache?.frontmatterPosition || null
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_update_frontmatter": {
+        const path = args.path as string;
+        const properties = args.properties as Record<string, unknown>;
+        const escapedProperties = JSON.stringify(properties);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
+            if (!file) return { error: "File not found: ${path}" };
+            const properties = ${escapedProperties};
+            await app.fileManager.processFrontMatter(file, (fm) => {
+              for (const [key, value] of Object.entries(properties)) {
+                if (value === null) {
+                  delete fm[key];
+                } else {
+                  fm[key] = value;
+                }
+              }
+            });
+            return { success: true, path: "${path}", updated: Object.keys(properties) };
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_dataview_query": {
+        const query = args.query as string;
+        const escapedQuery = JSON.stringify(query);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const dv = app.plugins.plugins['dataview'];
+            if (!dv) return { error: "Dataview plugin is not installed." };
+            if (!dv.api) return { error: "Dataview API is not available. Make sure the plugin is enabled." };
+            
+            try {
+              const result = await dv.api.query(${escapedQuery});
+              if (!result.successful) {
+                return { error: result.error };
+              }
+              
+              const value = result.value;
+              if (value.type === 'list') {
+                return {
+                  type: 'list',
+                  values: value.values.slice(0, 100).map(v => {
+                    if (v?.path) return { type: 'file', path: v.path };
+                    return v;
+                  })
+                };
+              } else if (value.type === 'table') {
+                return {
+                  type: 'table',
+                  headers: value.headers,
+                  values: value.values.slice(0, 100).map(row => 
+                    row.map(cell => {
+                      if (cell?.path) return { type: 'file', path: cell.path };
+                      if (cell?.ts) return cell.toString();
+                      return cell;
+                    })
+                  )
+                };
+              } else if (value.type === 'task') {
+                return {
+                  type: 'task',
+                  values: value.values.slice(0, 100).map(t => ({
+                    text: t.text,
+                    completed: t.completed,
+                    path: t.path,
+                    line: t.line
+                  }))
+                };
+              }
+              return value;
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_list_folder": {
+        const path = (args.path as string) || "";
+        const recursive = args.recursive as boolean;
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const path = "${path.replace(/"/g, '\\"')}".replace(/^\\/+/, '');
+            const folder = path ? app.vault.getAbstractFileByPath(path) : app.vault.getRoot();
+            if (!folder) return { error: "Folder not found: ${path}" };
+            if (!folder.children) return { error: "Not a folder: ${path}" };
+            
+            const listFolder = (f, recurse) => {
+              return f.children.map(child => {
+                const item = {
+                  name: child.name,
+                  path: child.path,
+                  type: child.children ? 'folder' : 'file'
+                };
+                if (child.children && recurse) {
+                  item.children = listFolder(child, true);
+                }
+                if (!child.children) {
+                  item.extension = child.extension;
+                  item.size = child.stat?.size;
+                }
+                return item;
+              });
+            };
+            
+            return {
+              path: path || '/',
+              contents: listFolder(folder, ${recursive})
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_create_folder": {
+        const path = args.path as string;
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const path = "${path.replace(/"/g, '\\"')}";
+            const existing = app.vault.getAbstractFileByPath(path);
+            if (existing) return { error: "Path already exists: ${path}" };
+            await app.vault.createFolder(path);
+            return { success: true, path };
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_move_file": {
+        const from = args.from as string;
+        const to = args.to as string;
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const file = app.vault.getAbstractFileByPath("${from.replace(/"/g, '\\"')}");
+            if (!file) return { error: "File not found: ${from}" };
+            await app.fileManager.renameFile(file, "${to.replace(/"/g, '\\"')}");
+            return { success: true, from: "${from}", to: "${to}" };
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_delete_file": {
+        const path = args.path as string;
+        const permanent = args.permanent as boolean;
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
+            if (!file) return { error: "File not found: ${path}" };
+            if (${permanent}) {
+              await app.vault.delete(file);
+            } else {
+              await app.vault.trash(file, false);
+            }
+            return { success: true, path: "${path}", permanent: ${permanent} };
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_recent_files": {
+        const limit = (args.limit as number) || 10;
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const recentFiles = app.workspace.getRecentFiles();
+            return recentFiles.slice(0, ${limit}).map(path => {
+              const file = app.vault.getAbstractFileByPath(path);
+              return {
+                path,
+                exists: !!file,
+                size: file?.stat?.size,
+                mtime: file?.stat?.mtime
+              };
+            });
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       }
 
