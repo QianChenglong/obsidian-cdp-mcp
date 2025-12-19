@@ -471,10 +471,14 @@ describe("toolDefinitions", () => {
     expect(toolNames).toContain("obsidian_replace_selection");
     expect(toolNames).toContain("obsidian_insert_at_cursor");
     expect(toolNames).toContain("obsidian_get_cursor_position");
+    expect(toolNames).toContain("obsidian_list_templates");
+    expect(toolNames).toContain("obsidian_apply_template");
+    expect(toolNames).toContain("obsidian_get_all_properties");
+    expect(toolNames).toContain("obsidian_resolve_link");
   });
 
-  it("should have 29 tools total", () => {
-    expect(toolDefinitions).toHaveLength(29);
+  it("should have 33 tools total", () => {
+    expect(toolDefinitions).toHaveLength(33);
   });
 
   it("should have valid schema for all tools", () => {

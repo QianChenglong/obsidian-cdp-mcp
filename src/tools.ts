@@ -447,6 +447,58 @@ export const toolDefinitions: ToolDefinition[] = [
       properties: {},
     },
   },
+  {
+    name: "obsidian_list_templates",
+    description: "List all available templates in the templates folder.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "obsidian_apply_template",
+    description: "Apply a template to the current file or create a new file from template.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        template: {
+          type: "string",
+          description: "Template file name or path (relative to templates folder)",
+        },
+        target: {
+          type: "string",
+          description: "Target file path. If not provided, applies to current active file.",
+        },
+      },
+      required: ["template"],
+    },
+  },
+  {
+    name: "obsidian_get_all_properties",
+    description: "Get all property names used across the vault with their types and usage count.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "obsidian_resolve_link",
+    description: "Resolve a wiki link to its actual file path.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        link: {
+          type: "string",
+          description: "The wiki link to resolve (e.g., '[[Note Name]]' or 'Note Name')",
+        },
+        source: {
+          type: "string",
+          description: "Source file path for resolving relative links (optional)",
+        },
+      },
+      required: ["link"],
+    },
+  },
 ];
 
 export class ToolHandler {
@@ -1121,6 +1173,151 @@ export class ToolHandler {
               ch: cursor.ch,
               lineContent: line,
               totalLines: editor.lineCount()
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_list_templates": {
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const templatesPlugin = app.internalPlugins.plugins['templates'];
+            if (!templatesPlugin?.enabled) {
+              return { error: "Templates plugin is not enabled" };
+            }
+            const templateFolder = templatesPlugin.instance?.options?.folder;
+            if (!templateFolder) {
+              return { error: "Templates folder not configured" };
+            }
+            const folder = app.vault.getAbstractFileByPath(templateFolder);
+            if (!folder || !folder.children) {
+              return { error: "Templates folder not found: " + templateFolder };
+            }
+            const templates = folder.children
+              .filter(f => f.extension === 'md')
+              .map(f => ({
+                name: f.basename,
+                path: f.path
+              }));
+            return {
+              folder: templateFolder,
+              templates
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_apply_template": {
+        const template = args.template as string;
+        const target = args.target as string | undefined;
+        const escapedTemplate = JSON.stringify(template);
+        const escapedTarget = target ? JSON.stringify(target) : "null";
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const templatesPlugin = app.internalPlugins.plugins['templates'];
+            if (!templatesPlugin?.enabled) {
+              return { error: "Templates plugin is not enabled" };
+            }
+            const templateFolder = templatesPlugin.instance?.options?.folder || '';
+            
+            // Find template file
+            let templatePath = ${escapedTemplate};
+            if (!templatePath.endsWith('.md')) templatePath += '.md';
+            if (!templatePath.startsWith(templateFolder)) {
+              templatePath = templateFolder + '/' + templatePath;
+            }
+            
+            const templateFile = app.vault.getAbstractFileByPath(templatePath);
+            if (!templateFile) {
+              return { error: "Template not found: " + templatePath };
+            }
+            
+            // Get or create target file
+            let targetFile;
+            const targetPath = ${escapedTarget};
+            if (targetPath) {
+              targetFile = app.vault.getAbstractFileByPath(targetPath);
+              if (!targetFile) {
+                await app.vault.create(targetPath, '');
+                targetFile = app.vault.getAbstractFileByPath(targetPath);
+              }
+              await app.workspace.openLinkText(targetPath, '', false);
+            } else {
+              targetFile = app.workspace.getActiveFile();
+            }
+            
+            if (!targetFile) {
+              return { error: "No target file available" };
+            }
+            
+            // Read template content and append to target
+            const templateContent = await app.vault.read(templateFile);
+            const currentContent = await app.vault.read(targetFile);
+            await app.vault.modify(targetFile, currentContent + templateContent);
+            
+            return {
+              success: true,
+              template: templatePath,
+              target: targetFile.path
+            };
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_all_properties": {
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const allProps = app.metadataCache.getAllPropertyInfos();
+            if (!allProps) return { properties: [] };
+            return {
+              properties: Object.entries(allProps).map(([name, info]) => ({
+                name,
+                type: info.type,
+                count: info.count
+              })).sort((a, b) => b.count - a.count)
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_resolve_link": {
+        const link = args.link as string;
+        const source = (args.source as string) || "";
+        const escapedLink = JSON.stringify(link.replace(/^\[\[|\]\]$/g, ''));
+        const escapedSource = JSON.stringify(source);
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const linkText = ${escapedLink};
+            const sourcePath = ${escapedSource};
+            const resolved = app.metadataCache.getFirstLinkpathDest(linkText, sourcePath);
+            if (!resolved) {
+              return {
+                link: linkText,
+                resolved: false,
+                path: null
+              };
+            }
+            return {
+              link: linkText,
+              resolved: true,
+              path: resolved.path,
+              name: resolved.name,
+              basename: resolved.basename
             };
           })()
         `);
