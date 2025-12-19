@@ -403,6 +403,50 @@ export const toolDefinitions: ToolDefinition[] = [
       },
     },
   },
+  {
+    name: "obsidian_get_selection",
+    description: "Get the currently selected text in the active editor.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "obsidian_replace_selection",
+    description: "Replace the currently selected text in the active editor.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          description: "Text to replace the selection with",
+        },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "obsidian_insert_at_cursor",
+    description: "Insert text at the current cursor position in the active editor.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          description: "Text to insert at cursor position",
+        },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "obsidian_get_cursor_position",
+    description: "Get the current cursor position in the active editor.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
 
 export class ToolHandler {
@@ -995,6 +1039,89 @@ export class ToolHandler {
                 mtime: file?.stat?.mtime
               };
             });
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_selection": {
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const editor = app.workspace.activeEditor?.editor;
+            if (!editor) return { error: "No active editor" };
+            const selection = editor.getSelection();
+            const from = editor.getCursor('from');
+            const to = editor.getCursor('to');
+            return {
+              text: selection,
+              from: { line: from.line, ch: from.ch },
+              to: { line: to.line, ch: to.ch },
+              isEmpty: selection === ''
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_replace_selection": {
+        const text = args.text as string;
+        const escapedText = JSON.stringify(text);
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const editor = app.workspace.activeEditor?.editor;
+            if (!editor) return { error: "No active editor" };
+            const oldSelection = editor.getSelection();
+            editor.replaceSelection(${escapedText});
+            return {
+              success: true,
+              replaced: oldSelection,
+              with: ${escapedText}
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_insert_at_cursor": {
+        const text = args.text as string;
+        const escapedText = JSON.stringify(text);
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const editor = app.workspace.activeEditor?.editor;
+            if (!editor) return { error: "No active editor" };
+            const cursor = editor.getCursor();
+            editor.replaceRange(${escapedText}, cursor);
+            return {
+              success: true,
+              inserted: ${escapedText},
+              at: { line: cursor.line, ch: cursor.ch }
+            };
+          })()
+        `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_cursor_position": {
+        const result = await this.cdp.evaluate(`
+          (() => {
+            const editor = app.workspace.activeEditor?.editor;
+            if (!editor) return { error: "No active editor" };
+            const cursor = editor.getCursor();
+            const line = editor.getLine(cursor.line);
+            return {
+              line: cursor.line,
+              ch: cursor.ch,
+              lineContent: line,
+              totalLines: editor.lineCount()
+            };
           })()
         `);
         return {
