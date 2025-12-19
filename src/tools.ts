@@ -114,7 +114,7 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "obsidian_search",
-    description: "Search for files in the Obsidian vault by name or content.",
+    description: "Search for files in the Obsidian vault by file path.",
     inputSchema: {
       type: "object",
       properties: {
@@ -125,6 +125,24 @@ export const toolDefinitions: ToolDefinition[] = [
         limit: {
           type: "number",
           description: "Maximum number of results (default: 20)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "obsidian_omnisearch",
+    description: "Full-text search in Obsidian vault using Omnisearch plugin. Returns ranked results with excerpts and match positions. Requires Omnisearch plugin to be installed and enabled.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query (supports full-text search with fuzzy matching)",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of results (default: 10)",
         },
       },
       required: ["query"],
@@ -353,6 +371,38 @@ export class ToolHandler {
             .slice(0, ${limit})
             .map(f => ({ path: f.path, name: f.name, extension: f.extension }))
         `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_omnisearch": {
+        const query = args.query as string;
+        const limit = (args.limit as number) || 10;
+        const escapedQuery = JSON.stringify(query);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const omnisearch = app.plugins.plugins['omnisearch'];
+            if (!omnisearch) {
+              return { error: "Omnisearch plugin is not installed. Please install it from Obsidian community plugins." };
+            }
+            if (!omnisearch.api) {
+              return { error: "Omnisearch API is not available. Please make sure Omnisearch plugin is enabled." };
+            }
+            const results = await omnisearch.api.search(${escapedQuery});
+            return results.slice(0, ${limit}).map(r => ({
+              score: r.score,
+              path: r.path,
+              basename: r.basename,
+              foundWords: r.foundWords,
+              matches: r.matches?.slice(0, 10),
+              excerpt: r.excerpt
+            }));
+          })()
+        `,
+          true
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
