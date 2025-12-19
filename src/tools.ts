@@ -391,19 +391,6 @@ export const toolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: "obsidian_get_recent_files",
-    description: "Get list of recently opened files.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: {
-          type: "number",
-          description: "Maximum number of files to return (default: 10)",
-        },
-      },
-    },
-  },
-  {
     name: "obsidian_get_selection",
     description: "Get the currently selected text in the active editor.",
     inputSchema: {
@@ -1072,27 +1059,6 @@ export class ToolHandler {
         `,
           true
         );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        };
-      }
-
-      case "obsidian_get_recent_files": {
-        const limit = (args.limit as number) || 10;
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const recentFiles = app.workspace.getRecentFiles();
-            return recentFiles.slice(0, ${limit}).map(path => {
-              const file = app.vault.getAbstractFileByPath(path);
-              return {
-                path,
-                exists: !!file,
-                size: file?.stat?.size,
-                mtime: file?.stat?.mtime
-              };
-            });
-          })()
-        `);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
