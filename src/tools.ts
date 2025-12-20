@@ -489,6 +489,116 @@ export const toolDefinitions: ToolDefinition[] = [
       required: ["link"],
     },
   },
+  {
+    name: "obsidian_search_community_plugins",
+    description: "Search for plugins in the Obsidian community plugin repository.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query to find plugins by name or description",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of results (default: 20)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "obsidian_install_plugin",
+    description: "Install a plugin from the Obsidian community plugin repository.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin_id: {
+          type: "string",
+          description: "The plugin ID to install (e.g., 'dataview', 'templater-obsidian')",
+        },
+        enable: {
+          type: "boolean",
+          description: "Enable the plugin after installation (default: true)",
+        },
+      },
+      required: ["plugin_id"],
+    },
+  },
+  {
+    name: "obsidian_enable_plugin",
+    description: "Enable an installed plugin.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin_id: {
+          type: "string",
+          description: "The plugin ID to enable",
+        },
+      },
+      required: ["plugin_id"],
+    },
+  },
+  {
+    name: "obsidian_disable_plugin",
+    description: "Disable an installed plugin.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin_id: {
+          type: "string",
+          description: "The plugin ID to disable",
+        },
+      },
+      required: ["plugin_id"],
+    },
+  },
+  {
+    name: "obsidian_uninstall_plugin",
+    description: "Uninstall a plugin from Obsidian.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin_id: {
+          type: "string",
+          description: "The plugin ID to uninstall",
+        },
+      },
+      required: ["plugin_id"],
+    },
+  },
+  {
+    name: "obsidian_get_plugin_settings",
+    description: "Get the settings/configuration of an installed plugin.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin_id: {
+          type: "string",
+          description: "The plugin ID to get settings for",
+        },
+      },
+      required: ["plugin_id"],
+    },
+  },
+  {
+    name: "obsidian_set_plugin_settings",
+    description: "Update the settings/configuration of an installed plugin.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plugin_id: {
+          type: "string",
+          description: "The plugin ID to update settings for",
+        },
+        settings: {
+          type: "object",
+          description: "Settings object to merge with existing settings",
+        },
+      },
+      required: ["plugin_id", "settings"],
+    },
+  },
 ];
 
 export class ToolHandler {
@@ -1301,6 +1411,358 @@ export class ToolHandler {
             };
           })()
         `);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_search_community_plugins": {
+        const query = args.query as string;
+        const limit = (args.limit as number) || 20;
+        const escapedQuery = JSON.stringify(query.toLowerCase());
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            try {
+              const response = await fetch('https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json');
+              if (!response.ok) {
+                return { error: "Failed to fetch community plugins list: " + response.status };
+              }
+              const plugins = await response.json();
+              const query = ${escapedQuery};
+              const matches = plugins.filter(p => 
+                p.id.toLowerCase().includes(query) || 
+                p.name.toLowerCase().includes(query) || 
+                p.description.toLowerCase().includes(query)
+              ).slice(0, ${limit});
+              
+              // Mark installed plugins
+              const installed = new Set(Object.keys(app.plugins.manifests));
+              return matches.map(p => ({
+                id: p.id,
+                name: p.name,
+                author: p.author,
+                description: p.description,
+                repo: p.repo,
+                installed: installed.has(p.id),
+                enabled: app.plugins.enabledPlugins.has(p.id)
+              }));
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_install_plugin": {
+        const pluginId = args.plugin_id as string;
+        const enable = args.enable !== false;
+        const escapedId = JSON.stringify(pluginId);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            try {
+              // Check if already installed
+              if (app.plugins.manifests[${escapedId}]) {
+                return { 
+                  error: "Plugin is already installed: " + ${escapedId},
+                  installed: true,
+                  enabled: app.plugins.enabledPlugins.has(${escapedId})
+                };
+              }
+              
+              // Fetch plugin list to get repo info
+              const response = await fetch('https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json');
+              const plugins = await response.json();
+              const plugin = plugins.find(p => p.id === ${escapedId});
+              
+              if (!plugin) {
+                return { error: "Plugin not found in community repository: " + ${escapedId} };
+              }
+              
+              // Fetch latest release info
+              const releaseResponse = await fetch('https://api.github.com/repos/' + plugin.repo + '/releases/latest');
+              if (!releaseResponse.ok) {
+                return { error: "Failed to fetch release info: " + releaseResponse.status };
+              }
+              const release = await releaseResponse.json();
+              
+              // Fetch manifest from release
+              const manifestAsset = release.assets.find(a => a.name === 'manifest.json');
+              if (!manifestAsset) {
+                return { error: "No manifest.json found in latest release" };
+              }
+              const manifestResponse = await fetch(manifestAsset.browser_download_url);
+              const manifest = await manifestResponse.json();
+              
+              // Install the plugin
+              await app.plugins.installPlugin(plugin.repo, release.tag_name, manifest);
+              
+              // Enable if requested
+              if (${enable}) {
+                await app.plugins.enablePluginAndSave(${escapedId});
+              }
+              
+              return {
+                success: true,
+                id: ${escapedId},
+                name: manifest.name,
+                version: manifest.version,
+                enabled: ${enable}
+              };
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_enable_plugin": {
+        const pluginId = args.plugin_id as string;
+        const escapedId = JSON.stringify(pluginId);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            try {
+              const manifest = app.plugins.manifests[${escapedId}];
+              if (!manifest) {
+                return { error: "Plugin not installed: " + ${escapedId} };
+              }
+              
+              if (app.plugins.enabledPlugins.has(${escapedId})) {
+                return { 
+                  success: true, 
+                  id: ${escapedId},
+                  name: manifest.name,
+                  message: "Plugin was already enabled"
+                };
+              }
+              
+              await app.plugins.enablePluginAndSave(${escapedId});
+              
+              return {
+                success: true,
+                id: ${escapedId},
+                name: manifest.name,
+                enabled: true
+              };
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_disable_plugin": {
+        const pluginId = args.plugin_id as string;
+        const escapedId = JSON.stringify(pluginId);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            try {
+              const manifest = app.plugins.manifests[${escapedId}];
+              if (!manifest) {
+                return { error: "Plugin not installed: " + ${escapedId} };
+              }
+              
+              if (!app.plugins.enabledPlugins.has(${escapedId})) {
+                return { 
+                  success: true, 
+                  id: ${escapedId},
+                  name: manifest.name,
+                  message: "Plugin was already disabled"
+                };
+              }
+              
+              await app.plugins.disablePluginAndSave(${escapedId});
+              
+              return {
+                success: true,
+                id: ${escapedId},
+                name: manifest.name,
+                enabled: false
+              };
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_uninstall_plugin": {
+        const pluginId = args.plugin_id as string;
+        const escapedId = JSON.stringify(pluginId);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            try {
+              const manifest = app.plugins.manifests[${escapedId}];
+              if (!manifest) {
+                return { error: "Plugin not installed: " + ${escapedId} };
+              }
+              
+              const pluginName = manifest.name;
+              await app.plugins.uninstallPlugin(${escapedId});
+              
+              return {
+                success: true,
+                id: ${escapedId},
+                name: pluginName,
+                uninstalled: true
+              };
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_get_plugin_settings": {
+        const pluginId = args.plugin_id as string;
+        const escapedId = JSON.stringify(pluginId);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            try {
+              const plugin = app.plugins.plugins[${escapedId}];
+              if (!plugin) {
+                return { error: "Plugin not found or not enabled: " + ${escapedId} };
+              }
+              
+              // Try to get settings from plugin instance
+              let settings = null;
+              if (plugin.settings) {
+                settings = plugin.settings;
+              } else if (plugin.data) {
+                settings = plugin.data;
+              }
+              
+              // Also try to load from data.json
+              const dataPath = plugin.manifest.dir + '/data.json';
+              let fileSettings = null;
+              try {
+                const adapter = app.vault.adapter;
+                if (await adapter.exists(dataPath)) {
+                  const content = await adapter.read(dataPath);
+                  fileSettings = JSON.parse(content);
+                }
+              } catch (e) {
+                // Ignore file read errors
+              }
+              
+              return {
+                id: ${escapedId},
+                name: plugin.manifest.name,
+                settings: settings || fileSettings || {},
+                hasSettings: !!(settings || fileSettings)
+              };
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_set_plugin_settings": {
+        const pluginId = args.plugin_id as string;
+        const settings = args.settings as Record<string, unknown>;
+        const escapedId = JSON.stringify(pluginId);
+        const escapedSettings = JSON.stringify(settings);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            try {
+              const plugin = app.plugins.plugins[${escapedId}];
+              if (!plugin) {
+                return { error: "Plugin not found or not enabled: " + ${escapedId} };
+              }
+              
+              const newSettings = ${escapedSettings};
+              
+              // Update in-memory settings
+              if (plugin.settings) {
+                Object.assign(plugin.settings, newSettings);
+              }
+              
+              // Try to save using plugin's saveData method
+              if (typeof plugin.saveData === 'function') {
+                const currentData = plugin.settings || plugin.data || {};
+                const mergedData = { ...currentData, ...newSettings };
+                await plugin.saveData(mergedData);
+                
+                // Also reload settings if plugin has loadSettings method
+                if (typeof plugin.loadSettings === 'function') {
+                  await plugin.loadSettings();
+                }
+                
+                return {
+                  success: true,
+                  id: ${escapedId},
+                  name: plugin.manifest.name,
+                  updated: Object.keys(newSettings)
+                };
+              }
+              
+              // Fallback: directly write to data.json
+              const dataPath = plugin.manifest.dir + '/data.json';
+              const adapter = app.vault.adapter;
+              let existingData = {};
+              try {
+                if (await adapter.exists(dataPath)) {
+                  const content = await adapter.read(dataPath);
+                  existingData = JSON.parse(content);
+                }
+              } catch (e) {
+                // Ignore
+              }
+              
+              const mergedData = { ...existingData, ...newSettings };
+              await adapter.write(dataPath, JSON.stringify(mergedData, null, 2));
+              
+              return {
+                success: true,
+                id: ${escapedId},
+                name: plugin.manifest.name,
+                updated: Object.keys(newSettings),
+                note: "Settings saved to file. Plugin may need to be reloaded for changes to take effect."
+              };
+            } catch (e) {
+              return { error: e.message };
+            }
+          })()
+        `,
+          true
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

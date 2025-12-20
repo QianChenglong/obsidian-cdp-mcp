@@ -172,6 +172,13 @@ npm link
 | 工具 | 说明 |
 |:---|:---|
 | `obsidian_list_plugins` | 列出所有插件 |
+| `obsidian_search_community_plugins` | 搜索社区插件库 |
+| `obsidian_install_plugin` | 从社区库安装插件 |
+| `obsidian_enable_plugin` | 启用已安装的插件 |
+| `obsidian_disable_plugin` | 禁用已安装的插件 |
+| `obsidian_uninstall_plugin` | 卸载插件 |
+| `obsidian_get_plugin_settings` | 获取插件配置 |
+| `obsidian_set_plugin_settings` | 更新插件配置 |
 | `obsidian_list_commands` | 列出所有命令 |
 | `obsidian_execute_command` | 执行命令 |
 | `obsidian_dataview_query` | 运行 Dataview 查询（需要 Dataview 插件） |

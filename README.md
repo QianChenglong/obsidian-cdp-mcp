@@ -172,6 +172,13 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | Tool | Description |
 |:---|:---|
 | `obsidian_list_plugins` | List all plugins |
+| `obsidian_search_community_plugins` | Search community plugin repository |
+| `obsidian_install_plugin` | Install plugin from community repository |
+| `obsidian_enable_plugin` | Enable an installed plugin |
+| `obsidian_disable_plugin` | Disable an installed plugin |
+| `obsidian_uninstall_plugin` | Uninstall a plugin |
+| `obsidian_get_plugin_settings` | Get plugin settings |
+| `obsidian_set_plugin_settings` | Update plugin settings |
 | `obsidian_list_commands` | List all commands |
 | `obsidian_execute_command` | Execute command |
 | `obsidian_dataview_query` | Run Dataview query (requires Dataview plugin) |
