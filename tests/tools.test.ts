@@ -9,6 +9,7 @@ function createMockCDPClient(overrides: Partial<CDPClient> = {}): CDPClient {
     disconnect: vi.fn(),
     send: vi.fn().mockResolvedValue({}),
     evaluate: vi.fn().mockResolvedValue(null),
+    safeEvaluate: vi.fn().mockResolvedValue(null),
     screenshot: vi.fn().mockResolvedValue("base64imagedata"),
     getConsoleMessages: vi.fn().mockReturnValue([]),
     clearConsoleMessages: vi.fn(),
@@ -160,21 +161,18 @@ describe("ToolHandler", () => {
 
   describe("obsidian_read_file", () => {
     it("should read file content", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue("# Hello World\n\nContent here");
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue("# Hello World\n\nContent here");
 
       const result = await handler.handle("obsidian_read_file", {
         path: "notes/test.md",
       });
 
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(
-        expect.stringContaining("notes/test.md"),
-        true
-      );
+      expect(mockCdp.safeEvaluate).toHaveBeenCalled();
       expect(result.content[0].text).toBe("# Hello World\n\nContent here");
     });
 
     it("should return error for non-existent file", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue({ error: "File not found: missing.md" });
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue({ error: "File not found: missing.md" });
 
       const result = await handler.handle("obsidian_read_file", {
         path: "missing.md",
@@ -187,7 +185,7 @@ describe("ToolHandler", () => {
 
   describe("obsidian_write_file", () => {
     it("should create new file", async () => {
-      mockCdp.evaluate = vi
+      mockCdp.safeEvaluate = vi
         .fn()
         .mockResolvedValue({ success: true, action: "created", path: "new.md" });
 
@@ -202,7 +200,7 @@ describe("ToolHandler", () => {
     });
 
     it("should modify existing file", async () => {
-      mockCdp.evaluate = vi
+      mockCdp.safeEvaluate = vi
         .fn()
         .mockResolvedValue({ success: true, action: "modified", path: "existing.md" });
 
@@ -215,16 +213,78 @@ describe("ToolHandler", () => {
       expect(parsed.action).toBe("modified");
     });
 
-    it("should escape special characters in content", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue({ success: true });
+    it("should handle special characters in content via safeEvaluate", async () => {
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue({ success: true });
 
       await handler.handle("obsidian_write_file", {
         path: "test.md",
-        content: 'Content with "quotes" and\nnewlines',
+        content: 'Content with "quotes", backticks ` and ${template} syntax',
       });
 
-      // Verify the content was properly escaped
-      expect(mockCdp.evaluate).toHaveBeenCalled();
+      // Verify safeEvaluate was called with args containing the content
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ content: 'Content with "quotes", backticks ` and ${template} syntax' }),
+        true
+      );
+    });
+  });
+
+  describe("obsidian_patch_file", () => {
+    it("should handle content with backticks and template syntax", async () => {
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue({
+        success: true,
+        path: "test.md",
+        applied: 1,
+        failed: 0,
+      });
+
+      // This was the exact bug - content with backticks and ${} would break
+      const patches = [
+        {
+          old_string: "old content",
+          new_string: "```mermaid\nflowchart TD\n    A[${variable}] --> B\n```",
+        },
+      ];
+
+      await handler.handle("obsidian_patch_file", {
+        path: "test.md",
+        patches,
+      });
+
+      // Verify safeEvaluate was called with the patches properly passed as args
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ patches }),
+        true
+      );
+    });
+
+    it("should handle Chinese characters and special unicode", async () => {
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue({
+        success: true,
+        path: "笔记.md",
+        applied: 1,
+        failed: 0,
+      });
+
+      const patches = [
+        {
+          old_string: "旧内容",
+          new_string: "新内容 with emoji 🎉 and special chars: \\ \" ' `",
+        },
+      ];
+
+      await handler.handle("obsidian_patch_file", {
+        path: "笔记.md",
+        patches,
+      });
+
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ path: "笔记.md", patches }),
+        true
+      );
     });
   });
 
@@ -234,7 +294,7 @@ describe("ToolHandler", () => {
         { path: "notes/test.md", name: "test.md", extension: "md" },
         { path: "notes/testing.md", name: "testing.md", extension: "md" },
       ];
-      mockCdp.evaluate = vi.fn().mockResolvedValue(searchResults);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue(searchResults);
 
       const result = await handler.handle("obsidian_search", { query: "test" });
 
@@ -244,12 +304,16 @@ describe("ToolHandler", () => {
     });
 
     it("should respect limit parameter", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue([]);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue([]);
 
       await handler.handle("obsidian_search", { query: "test", limit: 5 });
 
       expect(mockCdp.ensureHelpers).toHaveBeenCalled();
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining("5"));
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ limit: 5 }),
+        false
+      );
     });
   });
 
@@ -259,7 +323,7 @@ describe("ToolHandler", () => {
         { id: "plugin1", name: "Plugin 1", version: "1.0.0", enabled: true },
         { id: "plugin2", name: "Plugin 2", version: "2.0.0", enabled: false },
       ];
-      mockCdp.evaluate = vi.fn().mockResolvedValue(plugins);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue(plugins);
 
       const result = await handler.handle("obsidian_list_plugins", {});
 
@@ -268,17 +332,21 @@ describe("ToolHandler", () => {
     });
 
     it("should filter enabled plugins only", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue([]);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue([]);
 
       await handler.handle("obsidian_list_plugins", { enabled_only: true });
 
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining("true ?"));
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ enabledOnly: true }),
+        false
+      );
     });
   });
 
   describe("obsidian_execute_command", () => {
     it("should execute command by ID", async () => {
-      mockCdp.evaluate = vi
+      mockCdp.safeEvaluate = vi
         .fn()
         .mockResolvedValue({ success: true, command: "Toggle Fold" });
 
@@ -291,7 +359,7 @@ describe("ToolHandler", () => {
     });
 
     it("should return error for unknown command", async () => {
-      mockCdp.evaluate = vi
+      mockCdp.safeEvaluate = vi
         .fn()
         .mockResolvedValue({ error: "Command not found: unknown:command" });
 
@@ -310,7 +378,7 @@ describe("ToolHandler", () => {
         { id: "editor:toggle-fold", name: "Toggle Fold" },
         { id: "app:go-back", name: "Go Back" },
       ];
-      mockCdp.evaluate = vi.fn().mockResolvedValue(commands);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue(commands);
 
       const result = await handler.handle("obsidian_list_commands", {});
 
@@ -319,11 +387,15 @@ describe("ToolHandler", () => {
     });
 
     it("should filter commands by name", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue([]);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue([]);
 
       await handler.handle("obsidian_list_commands", { filter: "fold" });
 
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining("fold"));
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ filter: "fold" }),
+        false
+      );
     });
   });
 
@@ -347,7 +419,7 @@ describe("ToolHandler", () => {
 
   describe("obsidian_open_file", () => {
     it("should open file", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue({ success: true, path: "notes/test.md" });
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue({ success: true, path: "notes/test.md" });
 
       const result = await handler.handle("obsidian_open_file", {
         path: "notes/test.md",
@@ -358,18 +430,22 @@ describe("ToolHandler", () => {
     });
 
     it("should open file in new leaf", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue({ success: true });
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue({ success: true });
 
       await handler.handle("obsidian_open_file", {
         path: "notes/test.md",
         new_leaf: true,
       });
 
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining("true)"), true);
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ newLeaf: true }),
+        true
+      );
     });
 
     it("should return error for non-existent file", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue({ error: "File not found: missing.md" });
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue({ error: "File not found: missing.md" });
 
       const result = await handler.handle("obsidian_open_file", {
         path: "missing.md",
@@ -382,7 +458,7 @@ describe("ToolHandler", () => {
 
   describe("obsidian_dom_query", () => {
     it("should query single element", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue("<div>Content</div>");
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue("<div>Content</div>");
 
       const result = await handler.handle("obsidian_dom_query", {
         selector: ".workspace",
@@ -393,7 +469,7 @@ describe("ToolHandler", () => {
 
     it("should query all matching elements", async () => {
       const elements = ["<div>1</div>", "<div>2</div>"];
-      mockCdp.evaluate = vi.fn().mockResolvedValue(elements);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue(elements);
 
       const result = await handler.handle("obsidian_dom_query", {
         selector: ".item",
@@ -405,29 +481,37 @@ describe("ToolHandler", () => {
     });
 
     it("should extract text content", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue("Plain text");
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue("Plain text");
 
       await handler.handle("obsidian_dom_query", {
         selector: ".title",
         attribute: "text",
       });
 
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining('"text"'));
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ attribute: "text" }),
+        false
+      );
     });
 
     it("should extract custom attribute", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue("custom-value");
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue("custom-value");
 
       await handler.handle("obsidian_dom_query", {
         selector: "[data-type]",
         attribute: "data-type",
       });
 
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining('"data-type"'));
+      expect(mockCdp.safeEvaluate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ attribute: "data-type" }),
+        false
+      );
     });
 
     it("should return null for non-existent element", async () => {
-      mockCdp.evaluate = vi.fn().mockResolvedValue(null);
+      mockCdp.safeEvaluate = vi.fn().mockResolvedValue(null);
 
       const result = await handler.handle("obsidian_dom_query", {
         selector: ".nonexistent",

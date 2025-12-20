@@ -727,14 +727,13 @@ export class ToolHandler {
 
       case "obsidian_read_file": {
         const path = args.path as string;
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${path}" };
+            const file = app.vault.getAbstractFileByPath(__args.path);
+            if (!file) return { error: "File not found: " + __args.path };
             return await app.vault.read(file);
-          })()
-        `,
+          `,
+          { path },
           true
         );
         return {
@@ -745,12 +744,9 @@ export class ToolHandler {
       case "obsidian_write_file": {
         const path = args.path as string;
         const content = args.content as string;
-        const escapedContent = JSON.stringify(content);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const path = "${path.replace(/"/g, '\\"')}";
-            const content = ${escapedContent};
+            const { path, content } = __args;
             const file = app.vault.getAbstractFileByPath(path);
             if (file) {
               await app.vault.modify(file, content);
@@ -759,8 +755,8 @@ export class ToolHandler {
               await app.vault.create(path, content);
               return { success: true, action: "created", path };
             }
-          })()
-        `,
+          `,
+          { path, content },
           true
         );
         return {
@@ -771,12 +767,9 @@ export class ToolHandler {
       case "obsidian_patch_file": {
         const path = args.path as string;
         const patches = args.patches as Array<{ old_string: string; new_string: string }>;
-        const escapedPatches = JSON.stringify(patches);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const path = "${path.replace(/"/g, '\\"')}";
-            const patches = ${escapedPatches};
+            const { path, patches } = __args;
             
             const file = app.vault.getAbstractFileByPath(path);
             if (!file) {
@@ -837,8 +830,8 @@ export class ToolHandler {
               failed: 0,
               details: { applied, failed: [] }
             };
-          })()
-        `,
+          `,
+          { path, patches },
           true
         );
         return {
@@ -851,9 +844,10 @@ export class ToolHandler {
         const limit = (args.limit as number) || 20;
         // Use injected helper for efficient search with early termination
         await this.cdp.ensureHelpers();
-        const escapedQuery = JSON.stringify(query.toLowerCase());
-        const result = await this.cdp.evaluate(
-          `window.__mcpHelpers.searchFiles(${escapedQuery}, ${limit})`
+        const result = await this.cdp.safeEvaluate(
+          `return window.__mcpHelpers.searchFiles(__args.query.toLowerCase(), __args.limit);`,
+          { query, limit },
+          false
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
@@ -863,10 +857,8 @@ export class ToolHandler {
       case "obsidian_omnisearch": {
         const query = args.query as string;
         const limit = (args.limit as number) || 10;
-        const escapedQuery = JSON.stringify(query);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
             const omnisearch = app.plugins.plugins['omnisearch'];
             if (!omnisearch) {
               return { error: "Omnisearch plugin is not installed. Please install it from Obsidian community plugins." };
@@ -874,8 +866,8 @@ export class ToolHandler {
             if (!omnisearch.api) {
               return { error: "Omnisearch API is not available. Please make sure Omnisearch plugin is enabled." };
             }
-            const results = await omnisearch.api.search(${escapedQuery});
-            return results.slice(0, ${limit}).map(r => ({
+            const results = await omnisearch.api.search(__args.query);
+            return results.slice(0, __args.limit).map(r => ({
               score: r.score,
               path: r.path,
               basename: r.basename,
@@ -883,8 +875,8 @@ export class ToolHandler {
               matches: r.matches?.slice(0, 10),
               excerpt: r.excerpt
             }));
-          })()
-        `,
+          `,
+          { query, limit },
           true
         );
         return {
@@ -894,17 +886,21 @@ export class ToolHandler {
 
       case "obsidian_list_plugins": {
         const enabledOnly = args.enabled_only as boolean;
-        const result = await this.cdp.evaluate(`
-          Object.entries(app.plugins.plugins)
-            .filter(([id]) => ${enabledOnly} ? app.plugins.enabledPlugins.has(id) : true)
-            .map(([id, p]) => ({
-              id,
-              name: p.manifest.name,
-              version: p.manifest.version,
-              enabled: app.plugins.enabledPlugins.has(id),
-              description: p.manifest.description
-            }))
-        `);
+        const result = await this.cdp.safeEvaluate(
+          `
+            return Object.entries(app.plugins.plugins)
+              .filter(([id]) => __args.enabledOnly ? app.plugins.enabledPlugins.has(id) : true)
+              .map(([id, p]) => ({
+                id,
+                name: p.manifest.name,
+                version: p.manifest.version,
+                enabled: app.plugins.enabledPlugins.has(id),
+                description: p.manifest.description
+              }));
+          `,
+          { enabledOnly },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -912,14 +908,16 @@ export class ToolHandler {
 
       case "obsidian_execute_command": {
         const commandId = args.command_id as string;
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const cmd = app.commands.commands["${commandId.replace(/"/g, '\\"')}"];
-            if (!cmd) return { error: "Command not found: ${commandId}" };
-            app.commands.executeCommandById("${commandId.replace(/"/g, '\\"')}");
+        const result = await this.cdp.safeEvaluate(
+          `
+            const cmd = app.commands.commands[__args.commandId];
+            if (!cmd) return { error: "Command not found: " + __args.commandId };
+            app.commands.executeCommandById(__args.commandId);
             return { success: true, command: cmd.name };
-          })()
-        `);
+          `,
+          { commandId },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -927,15 +925,17 @@ export class ToolHandler {
 
       case "obsidian_list_commands": {
         const filter = (args.filter as string) || "";
-        const result = await this.cdp.evaluate(`
-          Object.entries(app.commands.commands)
-            .filter(([id, cmd]) => {
-              const f = "${filter.toLowerCase().replace(/"/g, '\\"')}";
-              return !f || id.toLowerCase().includes(f) || cmd.name.toLowerCase().includes(f);
-            })
-            .map(([id, cmd]) => ({ id, name: cmd.name }))
-            .slice(0, 100)
-        `);
+        const result = await this.cdp.safeEvaluate(
+          `
+            const f = __args.filter.toLowerCase();
+            return Object.entries(app.commands.commands)
+              .filter(([id, cmd]) => !f || id.toLowerCase().includes(f) || cmd.name.toLowerCase().includes(f))
+              .map(([id, cmd]) => ({ id, name: cmd.name }))
+              .slice(0, 100);
+          `,
+          { filter },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -959,15 +959,15 @@ export class ToolHandler {
       case "obsidian_open_file": {
         const path = args.path as string;
         const newLeaf = args.new_leaf as boolean;
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${path}" };
-            await app.workspace.openLinkText("${path.replace(/"/g, '\\"')}", "", ${newLeaf});
-            return { success: true, path: "${path}" };
-          })()
-        `,
+            const { path, newLeaf } = __args;
+            const file = app.vault.getAbstractFileByPath(path);
+            if (!file) return { error: "File not found: " + path };
+            await app.workspace.openLinkText(path, "", newLeaf);
+            return { success: true, path };
+          `,
+          { path, newLeaf },
           true
         );
         return {
@@ -980,25 +980,27 @@ export class ToolHandler {
         const attribute = (args.attribute as string) || "innerHTML";
         const all = args.all as boolean;
 
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const attr = "${attribute}";
+        const result = await this.cdp.safeEvaluate(
+          `
+            const { selector, attribute, all } = __args;
             const getValue = (el) => {
-              if (attr === "text") return el.textContent;
-              if (attr === "innerHTML") return el.innerHTML.substring(0, 2000);
-              return el.getAttribute(attr);
+              if (attribute === "text") return el.textContent;
+              if (attribute === "innerHTML") return el.innerHTML.substring(0, 2000);
+              return el.getAttribute(attribute);
             };
             
-            if (${all}) {
-              return Array.from(document.querySelectorAll("${selector.replace(/"/g, '\\"')}"))
+            if (all) {
+              return Array.from(document.querySelectorAll(selector))
                 .slice(0, 20)
                 .map(getValue);
             } else {
-              const el = document.querySelector("${selector.replace(/"/g, '\\"')}");
+              const el = document.querySelector(selector);
               return el ? getValue(el) : null;
             }
-          })()
-        `);
+          `,
+          { selector, attribute, all },
+          false
+        );
         return {
           content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }],
         };
@@ -1006,23 +1008,26 @@ export class ToolHandler {
 
       case "obsidian_get_backlinks": {
         const path = args.path as string;
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${path}" };
+        const result = await this.cdp.safeEvaluate(
+          `
+            const path = __args.path;
+            const file = app.vault.getAbstractFileByPath(path);
+            if (!file) return { error: "File not found: " + path };
             const backlinks = app.metadataCache.getBacklinksForFile(file);
-            if (!backlinks) return { path: "${path}", backlinks: [] };
+            if (!backlinks) return { path, backlinks: [] };
             const data = backlinks.data;
             return {
-              path: "${path}",
+              path,
               backlinks: Object.entries(data).map(([filePath, links]) => ({
                 file: filePath,
                 count: links.length,
                 positions: links.slice(0, 5).map(l => ({ line: l.position?.start?.line, col: l.position?.start?.col }))
               }))
             };
-          })()
-        `);
+          `,
+          { path },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1030,28 +1035,31 @@ export class ToolHandler {
 
       case "obsidian_get_outlinks": {
         const path = args.path as string;
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${path}" };
+        const result = await this.cdp.safeEvaluate(
+          `
+            const path = __args.path;
+            const file = app.vault.getAbstractFileByPath(path);
+            if (!file) return { error: "File not found: " + path };
             const cache = app.metadataCache.getFileCache(file);
-            if (!cache) return { path: "${path}", outlinks: [] };
+            if (!cache) return { path, outlinks: [] };
             const links = cache.links || [];
             const embeds = cache.embeds || [];
             return {
-              path: "${path}",
+              path,
               outlinks: links.map(l => ({
                 link: l.link,
                 displayText: l.displayText,
-                resolved: !!app.metadataCache.getFirstLinkpathDest(l.link, "${path}")
+                resolved: !!app.metadataCache.getFirstLinkpathDest(l.link, path)
               })),
               embeds: embeds.map(e => ({
                 link: e.link,
-                resolved: !!app.metadataCache.getFirstLinkpathDest(e.link, "${path}")
+                resolved: !!app.metadataCache.getFirstLinkpathDest(e.link, path)
               }))
             };
-          })()
-        `);
+          `,
+          { path },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1059,10 +1067,9 @@ export class ToolHandler {
 
       case "obsidian_get_tags": {
         const path = args.path as string | undefined;
-        const escapedPath = path ? path.replace(/"/g, '\\"') : "";
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const path = "${escapedPath}";
+        const result = await this.cdp.safeEvaluate(
+          `
+            const path = __args.path;
             if (path) {
               const file = app.vault.getAbstractFileByPath(path);
               if (!file) return { error: "File not found: " + path };
@@ -1082,8 +1089,10 @@ export class ToolHandler {
                   .sort((a, b) => b.count - a.count)
               };
             }
-          })()
-        `);
+          `,
+          { path },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1091,18 +1100,21 @@ export class ToolHandler {
 
       case "obsidian_get_frontmatter": {
         const path = args.path as string;
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${path}" };
+        const result = await this.cdp.safeEvaluate(
+          `
+            const path = __args.path;
+            const file = app.vault.getAbstractFileByPath(path);
+            if (!file) return { error: "File not found: " + path };
             const cache = app.metadataCache.getFileCache(file);
             return {
-              path: "${path}",
+              path,
               frontmatter: cache?.frontmatter || null,
               position: cache?.frontmatterPosition || null
             };
-          })()
-        `);
+          `,
+          { path },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1111,13 +1123,11 @@ export class ToolHandler {
       case "obsidian_update_frontmatter": {
         const path = args.path as string;
         const properties = args.properties as Record<string, unknown>;
-        const escapedProperties = JSON.stringify(properties);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${path}" };
-            const properties = ${escapedProperties};
+            const { path, properties } = __args;
+            const file = app.vault.getAbstractFileByPath(path);
+            if (!file) return { error: "File not found: " + path };
             await app.fileManager.processFrontMatter(file, (fm) => {
               for (const [key, value] of Object.entries(properties)) {
                 if (value === null) {
@@ -1127,9 +1137,9 @@ export class ToolHandler {
                 }
               }
             });
-            return { success: true, path: "${path}", updated: Object.keys(properties) };
-          })()
-        `,
+            return { success: true, path, updated: Object.keys(properties) };
+          `,
+          { path, properties },
           true
         );
         return {
@@ -1139,16 +1149,14 @@ export class ToolHandler {
 
       case "obsidian_dataview_query": {
         const query = args.query as string;
-        const escapedQuery = JSON.stringify(query);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
             const dv = app.plugins.plugins['dataview'];
             if (!dv) return { error: "Dataview plugin is not installed." };
             if (!dv.api) return { error: "Dataview API is not available. Make sure the plugin is enabled." };
             
             try {
-              const result = await dv.api.query(${escapedQuery});
+              const result = await dv.api.query(__args.query);
               if (!result.successful) {
                 return { error: result.error };
               }
@@ -1189,8 +1197,8 @@ export class ToolHandler {
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { query },
           true
         );
         return {
@@ -1201,12 +1209,13 @@ export class ToolHandler {
       case "obsidian_list_folder": {
         const path = (args.path as string) || "";
         const recursive = args.recursive as boolean;
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const path = "${path.replace(/"/g, '\\"')}".replace(/^\\/+/, '');
-            const folder = path ? app.vault.getAbstractFileByPath(path) : app.vault.getRoot();
-            if (!folder) return { error: "Folder not found: ${path}" };
-            if (!folder.children) return { error: "Not a folder: ${path}" };
+        const result = await this.cdp.safeEvaluate(
+          `
+            const { path, recursive } = __args;
+            const normalizedPath = path.replace(/^\/+/, '');
+            const folder = normalizedPath ? app.vault.getAbstractFileByPath(normalizedPath) : app.vault.getRoot();
+            if (!folder) return { error: "Folder not found: " + path };
+            if (!folder.children) return { error: "Not a folder: " + path };
             
             const listFolder = (f, recurse) => {
               return f.children.map(child => {
@@ -1227,11 +1236,13 @@ export class ToolHandler {
             };
             
             return {
-              path: path || '/',
-              contents: listFolder(folder, ${recursive})
+              path: normalizedPath || '/',
+              contents: listFolder(folder, recursive)
             };
-          })()
-        `);
+          `,
+          { path, recursive },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1239,16 +1250,15 @@ export class ToolHandler {
 
       case "obsidian_create_folder": {
         const path = args.path as string;
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const path = "${path.replace(/"/g, '\\"')}";
+            const path = __args.path;
             const existing = app.vault.getAbstractFileByPath(path);
-            if (existing) return { error: "Path already exists: ${path}" };
+            if (existing) return { error: "Path already exists: " + path };
             await app.vault.createFolder(path);
             return { success: true, path };
-          })()
-        `,
+          `,
+          { path },
           true
         );
         return {
@@ -1259,15 +1269,15 @@ export class ToolHandler {
       case "obsidian_move_file": {
         const from = args.from as string;
         const to = args.to as string;
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const file = app.vault.getAbstractFileByPath("${from.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${from}" };
-            await app.fileManager.renameFile(file, "${to.replace(/"/g, '\\"')}");
-            return { success: true, from: "${from}", to: "${to}" };
-          })()
-        `,
+            const { from, to } = __args;
+            const file = app.vault.getAbstractFileByPath(from);
+            if (!file) return { error: "File not found: " + from };
+            await app.fileManager.renameFile(file, to);
+            return { success: true, from, to };
+          `,
+          { from, to },
           true
         );
         return {
@@ -1278,19 +1288,19 @@ export class ToolHandler {
       case "obsidian_delete_file": {
         const path = args.path as string;
         const permanent = args.permanent as boolean;
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
-            const file = app.vault.getAbstractFileByPath("${path.replace(/"/g, '\\"')}");
-            if (!file) return { error: "File not found: ${path}" };
-            if (${permanent}) {
+            const { path, permanent } = __args;
+            const file = app.vault.getAbstractFileByPath(path);
+            if (!file) return { error: "File not found: " + path };
+            if (permanent) {
               await app.vault.delete(file);
             } else {
               await app.vault.trash(file, false);
             }
-            return { success: true, path: "${path}", permanent: ${permanent} };
-          })()
-        `,
+            return { success: true, path, permanent };
+          `,
+          { path, permanent },
           true
         );
         return {
@@ -1321,20 +1331,21 @@ export class ToolHandler {
 
       case "obsidian_replace_selection": {
         const text = args.text as string;
-        const escapedText = JSON.stringify(text);
-        const result = await this.cdp.evaluate(`
-          (() => {
+        const result = await this.cdp.safeEvaluate(
+          `
             const editor = app.workspace.activeEditor?.editor;
             if (!editor) return { error: "No active editor" };
             const oldSelection = editor.getSelection();
-            editor.replaceSelection(${escapedText});
+            editor.replaceSelection(__args.text);
             return {
               success: true,
               replaced: oldSelection,
-              with: ${escapedText}
+              with: __args.text
             };
-          })()
-        `);
+          `,
+          { text },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1342,20 +1353,21 @@ export class ToolHandler {
 
       case "obsidian_insert_at_cursor": {
         const text = args.text as string;
-        const escapedText = JSON.stringify(text);
-        const result = await this.cdp.evaluate(`
-          (() => {
+        const result = await this.cdp.safeEvaluate(
+          `
             const editor = app.workspace.activeEditor?.editor;
             if (!editor) return { error: "No active editor" };
             const cursor = editor.getCursor();
-            editor.replaceRange(${escapedText}, cursor);
+            editor.replaceRange(__args.text, cursor);
             return {
               success: true,
-              inserted: ${escapedText},
+              inserted: __args.text,
               at: { line: cursor.line, ch: cursor.ch }
             };
-          })()
-        `);
+          `,
+          { text },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1416,11 +1428,9 @@ export class ToolHandler {
       case "obsidian_apply_template": {
         const template = args.template as string;
         const target = args.target as string | undefined;
-        const escapedTemplate = JSON.stringify(template);
-        const escapedTarget = target ? JSON.stringify(target) : "null";
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
+            const { template, target } = __args;
             const templatesPlugin = app.internalPlugins.plugins['templates'];
             if (!templatesPlugin?.enabled) {
               return { error: "Templates plugin is not enabled" };
@@ -1428,7 +1438,7 @@ export class ToolHandler {
             const templateFolder = templatesPlugin.instance?.options?.folder || '';
             
             // Find template file
-            let templatePath = ${escapedTemplate};
+            let templatePath = template;
             if (!templatePath.endsWith('.md')) templatePath += '.md';
             if (!templatePath.startsWith(templateFolder)) {
               templatePath = templateFolder + '/' + templatePath;
@@ -1441,14 +1451,13 @@ export class ToolHandler {
             
             // Get or create target file
             let targetFile;
-            const targetPath = ${escapedTarget};
-            if (targetPath) {
-              targetFile = app.vault.getAbstractFileByPath(targetPath);
+            if (target) {
+              targetFile = app.vault.getAbstractFileByPath(target);
               if (!targetFile) {
-                await app.vault.create(targetPath, '');
-                targetFile = app.vault.getAbstractFileByPath(targetPath);
+                await app.vault.create(target, '');
+                targetFile = app.vault.getAbstractFileByPath(target);
               }
-              await app.workspace.openLinkText(targetPath, '', false);
+              await app.workspace.openLinkText(target, '', false);
             } else {
               targetFile = app.workspace.getActiveFile();
             }
@@ -1467,8 +1476,8 @@ export class ToolHandler {
               template: templatePath,
               target: targetFile.path
             };
-          })()
-        `,
+          `,
+          { template, target },
           true
         );
         return {
@@ -1498,29 +1507,29 @@ export class ToolHandler {
       case "obsidian_resolve_link": {
         const link = args.link as string;
         const source = (args.source as string) || "";
-        const escapedLink = JSON.stringify(link.replace(/^\[\[|\]\]$/g, ''));
-        const escapedSource = JSON.stringify(source);
-        const result = await this.cdp.evaluate(`
-          (() => {
-            const linkText = ${escapedLink};
-            const sourcePath = ${escapedSource};
-            const resolved = app.metadataCache.getFirstLinkpathDest(linkText, sourcePath);
+        const cleanedLink = link.replace(/^\[\[|\]\]$/g, '');
+        const result = await this.cdp.safeEvaluate(
+          `
+            const { link, source } = __args;
+            const resolved = app.metadataCache.getFirstLinkpathDest(link, source);
             if (!resolved) {
               return {
-                link: linkText,
+                link,
                 resolved: false,
                 path: null
               };
             }
             return {
-              link: linkText,
+              link,
               resolved: true,
               path: resolved.path,
               name: resolved.name,
               basename: resolved.basename
             };
-          })()
-        `);
+          `,
+          { link: cleanedLink, source },
+          false
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
@@ -1529,22 +1538,20 @@ export class ToolHandler {
       case "obsidian_search_community_plugins": {
         const query = args.query as string;
         const limit = (args.limit as number) || 20;
-        const escapedQuery = JSON.stringify(query.toLowerCase());
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
             try {
               const response = await fetch('https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json');
               if (!response.ok) {
                 return { error: "Failed to fetch community plugins list: " + response.status };
               }
               const plugins = await response.json();
-              const query = ${escapedQuery};
+              const queryLower = __args.query.toLowerCase();
               const matches = plugins.filter(p => 
-                p.id.toLowerCase().includes(query) || 
-                p.name.toLowerCase().includes(query) || 
-                p.description.toLowerCase().includes(query)
-              ).slice(0, ${limit});
+                p.id.toLowerCase().includes(queryLower) || 
+                p.name.toLowerCase().includes(queryLower) || 
+                p.description.toLowerCase().includes(queryLower)
+              ).slice(0, __args.limit);
               
               // Mark installed plugins
               const installed = new Set(Object.keys(app.plugins.manifests));
@@ -1560,8 +1567,8 @@ export class ToolHandler {
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { query, limit },
           true
         );
         return {
@@ -1572,27 +1579,26 @@ export class ToolHandler {
       case "obsidian_install_plugin": {
         const pluginId = args.plugin_id as string;
         const enable = args.enable !== false;
-        const escapedId = JSON.stringify(pluginId);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
+            const { pluginId, enable } = __args;
             try {
               // Check if already installed
-              if (app.plugins.manifests[${escapedId}]) {
+              if (app.plugins.manifests[pluginId]) {
                 return { 
-                  error: "Plugin is already installed: " + ${escapedId},
+                  error: "Plugin is already installed: " + pluginId,
                   installed: true,
-                  enabled: app.plugins.enabledPlugins.has(${escapedId})
+                  enabled: app.plugins.enabledPlugins.has(pluginId)
                 };
               }
               
               // Fetch plugin list to get repo info
               const response = await fetch('https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json');
               const plugins = await response.json();
-              const plugin = plugins.find(p => p.id === ${escapedId});
+              const plugin = plugins.find(p => p.id === pluginId);
               
               if (!plugin) {
-                return { error: "Plugin not found in community repository: " + ${escapedId} };
+                return { error: "Plugin not found in community repository: " + pluginId };
               }
               
               // Fetch latest release info
@@ -1614,22 +1620,22 @@ export class ToolHandler {
               await app.plugins.installPlugin(plugin.repo, release.tag_name, manifest);
               
               // Enable if requested
-              if (${enable}) {
-                await app.plugins.enablePluginAndSave(${escapedId});
+              if (enable) {
+                await app.plugins.enablePluginAndSave(pluginId);
               }
               
               return {
                 success: true,
-                id: ${escapedId},
+                id: pluginId,
                 name: manifest.name,
                 version: manifest.version,
-                enabled: ${enable}
+                enabled: enable
               };
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { pluginId, enable },
           true
         );
         return {
@@ -1639,38 +1645,37 @@ export class ToolHandler {
 
       case "obsidian_enable_plugin": {
         const pluginId = args.plugin_id as string;
-        const escapedId = JSON.stringify(pluginId);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
+            const pluginId = __args.pluginId;
             try {
-              const manifest = app.plugins.manifests[${escapedId}];
+              const manifest = app.plugins.manifests[pluginId];
               if (!manifest) {
-                return { error: "Plugin not installed: " + ${escapedId} };
+                return { error: "Plugin not installed: " + pluginId };
               }
               
-              if (app.plugins.enabledPlugins.has(${escapedId})) {
+              if (app.plugins.enabledPlugins.has(pluginId)) {
                 return { 
                   success: true, 
-                  id: ${escapedId},
+                  id: pluginId,
                   name: manifest.name,
                   message: "Plugin was already enabled"
                 };
               }
               
-              await app.plugins.enablePluginAndSave(${escapedId});
+              await app.plugins.enablePluginAndSave(pluginId);
               
               return {
                 success: true,
-                id: ${escapedId},
+                id: pluginId,
                 name: manifest.name,
                 enabled: true
               };
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { pluginId },
           true
         );
         return {
@@ -1680,38 +1685,37 @@ export class ToolHandler {
 
       case "obsidian_disable_plugin": {
         const pluginId = args.plugin_id as string;
-        const escapedId = JSON.stringify(pluginId);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
+            const pluginId = __args.pluginId;
             try {
-              const manifest = app.plugins.manifests[${escapedId}];
+              const manifest = app.plugins.manifests[pluginId];
               if (!manifest) {
-                return { error: "Plugin not installed: " + ${escapedId} };
+                return { error: "Plugin not installed: " + pluginId };
               }
               
-              if (!app.plugins.enabledPlugins.has(${escapedId})) {
+              if (!app.plugins.enabledPlugins.has(pluginId)) {
                 return { 
                   success: true, 
-                  id: ${escapedId},
+                  id: pluginId,
                   name: manifest.name,
                   message: "Plugin was already disabled"
                 };
               }
               
-              await app.plugins.disablePluginAndSave(${escapedId});
+              await app.plugins.disablePluginAndSave(pluginId);
               
               return {
                 success: true,
-                id: ${escapedId},
+                id: pluginId,
                 name: manifest.name,
                 enabled: false
               };
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { pluginId },
           true
         );
         return {
@@ -1721,30 +1725,29 @@ export class ToolHandler {
 
       case "obsidian_uninstall_plugin": {
         const pluginId = args.plugin_id as string;
-        const escapedId = JSON.stringify(pluginId);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
+            const pluginId = __args.pluginId;
             try {
-              const manifest = app.plugins.manifests[${escapedId}];
+              const manifest = app.plugins.manifests[pluginId];
               if (!manifest) {
-                return { error: "Plugin not installed: " + ${escapedId} };
+                return { error: "Plugin not installed: " + pluginId };
               }
               
               const pluginName = manifest.name;
-              await app.plugins.uninstallPlugin(${escapedId});
+              await app.plugins.uninstallPlugin(pluginId);
               
               return {
                 success: true,
-                id: ${escapedId},
+                id: pluginId,
                 name: pluginName,
                 uninstalled: true
               };
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { pluginId },
           true
         );
         return {
@@ -1754,14 +1757,13 @@ export class ToolHandler {
 
       case "obsidian_get_plugin_settings": {
         const pluginId = args.plugin_id as string;
-        const escapedId = JSON.stringify(pluginId);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
+            const pluginId = __args.pluginId;
             try {
-              const plugin = app.plugins.plugins[${escapedId}];
+              const plugin = app.plugins.plugins[pluginId];
               if (!plugin) {
-                return { error: "Plugin not found or not enabled: " + ${escapedId} };
+                return { error: "Plugin not found or not enabled: " + pluginId };
               }
               
               // Try to get settings from plugin instance
@@ -1786,7 +1788,7 @@ export class ToolHandler {
               }
               
               return {
-                id: ${escapedId},
+                id: pluginId,
                 name: plugin.manifest.name,
                 settings: settings || fileSettings || {},
                 hasSettings: !!(settings || fileSettings)
@@ -1794,8 +1796,8 @@ export class ToolHandler {
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { pluginId },
           true
         );
         return {
@@ -1806,28 +1808,24 @@ export class ToolHandler {
       case "obsidian_set_plugin_settings": {
         const pluginId = args.plugin_id as string;
         const settings = args.settings as Record<string, unknown>;
-        const escapedId = JSON.stringify(pluginId);
-        const escapedSettings = JSON.stringify(settings);
-        const result = await this.cdp.evaluate(
+        const result = await this.cdp.safeEvaluate(
           `
-          (async () => {
+            const { pluginId, settings } = __args;
             try {
-              const plugin = app.plugins.plugins[${escapedId}];
+              const plugin = app.plugins.plugins[pluginId];
               if (!plugin) {
-                return { error: "Plugin not found or not enabled: " + ${escapedId} };
+                return { error: "Plugin not found or not enabled: " + pluginId };
               }
-              
-              const newSettings = ${escapedSettings};
               
               // Update in-memory settings
               if (plugin.settings) {
-                Object.assign(plugin.settings, newSettings);
+                Object.assign(plugin.settings, settings);
               }
               
               // Try to save using plugin's saveData method
               if (typeof plugin.saveData === 'function') {
                 const currentData = plugin.settings || plugin.data || {};
-                const mergedData = { ...currentData, ...newSettings };
+                const mergedData = { ...currentData, ...settings };
                 await plugin.saveData(mergedData);
                 
                 // Also reload settings if plugin has loadSettings method
@@ -1837,9 +1835,9 @@ export class ToolHandler {
                 
                 return {
                   success: true,
-                  id: ${escapedId},
+                  id: pluginId,
                   name: plugin.manifest.name,
-                  updated: Object.keys(newSettings)
+                  updated: Object.keys(settings)
                 };
               }
               
@@ -1856,21 +1854,21 @@ export class ToolHandler {
                 // Ignore
               }
               
-              const mergedData = { ...existingData, ...newSettings };
+              const mergedData = { ...existingData, ...settings };
               await adapter.write(dataPath, JSON.stringify(mergedData, null, 2));
               
               return {
                 success: true,
-                id: ${escapedId},
+                id: pluginId,
                 name: plugin.manifest.name,
-                updated: Object.keys(newSettings),
+                updated: Object.keys(settings),
                 note: "Settings saved to file. Plugin may need to be reloaded for changes to take effect."
               };
             } catch (e) {
               return { error: e.message };
             }
-          })()
-        `,
+          `,
+          { pluginId, settings },
           true
         );
         return {

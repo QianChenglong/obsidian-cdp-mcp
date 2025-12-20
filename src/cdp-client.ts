@@ -361,6 +361,34 @@ export class CDPClient {
     return result.result.value;
   }
 
+  /**
+   * Safely evaluate code with arguments passed via global variable.
+   * Avoids string escaping issues when embedding user data in code.
+   */
+  async safeEvaluate<T, A = unknown>(
+    code: string,
+    args: A,
+    awaitPromise = false
+  ): Promise<T> {
+    const argName = `__mcp_args_${Date.now()}`;
+    
+    // Inject arguments as global variable
+    await this.evaluate(`window.${argName} = ${JSON.stringify(args)}`);
+    
+    // Execute code with args available, then cleanup
+    const wrappedCode = `
+      (${awaitPromise ? 'async ' : ''}() => {
+        const __args = window.${argName};
+        delete window.${argName};
+        return (${awaitPromise ? 'async ' : ''}(__args) => {
+          ${code}
+        })(__args);
+      })()
+    `;
+    
+    return this.evaluate<T>(wrappedCode, awaitPromise);
+  }
+
   async screenshot(
     format: "png" | "jpeg" | "webp" = "png",
     quality?: number
