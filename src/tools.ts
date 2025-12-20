@@ -344,20 +344,21 @@ export const toolDefinitions: ToolDefinition[] = [
       required: ["path", "properties"],
     },
   },
-  {
-    name: "obsidian_dataview_query",
-    description: "Execute a Dataview query (DQL) and return results. Requires Dataview plugin to be installed.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Dataview query (DQL). Examples: 'LIST FROM #tag', 'TABLE file.ctime FROM \"folder\"'",
-        },
-      },
-      required: ["query"],
-    },
-  },
+  // TODO: Dataview 接口暂时屏蔽
+  // {
+  //   name: "obsidian_dataview_query",
+  //   description: "Execute a Dataview query (DQL) and return results. Requires Dataview plugin to be installed.",
+  //   inputSchema: {
+  //     type: "object",
+  //     properties: {
+  //       query: {
+  //         type: "string",
+  //         description: "Dataview query (DQL). Examples: 'LIST FROM #tag', 'TABLE file.ctime FROM \"folder\"'",
+  //       },
+  //     },
+  //     required: ["query"],
+  //   },
+  // },
   {
     name: "obsidian_list_folder",
     description: "List contents of a folder in the vault.",
@@ -1147,64 +1148,65 @@ export class ToolHandler {
         };
       }
 
-      case "obsidian_dataview_query": {
-        const query = args.query as string;
-        const result = await this.cdp.safeEvaluate(
-          `
-            const dv = app.plugins.plugins['dataview'];
-            if (!dv) return { error: "Dataview plugin is not installed." };
-            if (!dv.api) return { error: "Dataview API is not available. Make sure the plugin is enabled." };
-            
-            try {
-              const result = await dv.api.query(__args.query);
-              if (!result.successful) {
-                return { error: result.error };
-              }
-              
-              const value = result.value;
-              if (value.type === 'list') {
-                return {
-                  type: 'list',
-                  values: value.values.slice(0, 100).map(v => {
-                    if (v?.path) return { type: 'file', path: v.path };
-                    return v;
-                  })
-                };
-              } else if (value.type === 'table') {
-                return {
-                  type: 'table',
-                  headers: value.headers,
-                  values: value.values.slice(0, 100).map(row => 
-                    row.map(cell => {
-                      if (cell?.path) return { type: 'file', path: cell.path };
-                      if (cell?.ts) return cell.toString();
-                      return cell;
-                    })
-                  )
-                };
-              } else if (value.type === 'task') {
-                return {
-                  type: 'task',
-                  values: value.values.slice(0, 100).map(t => ({
-                    text: t.text,
-                    completed: t.completed,
-                    path: t.path,
-                    line: t.line
-                  }))
-                };
-              }
-              return value;
-            } catch (e) {
-              return { error: e.message };
-            }
-          `,
-          { query },
-          true
-        );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-        };
-      }
+      // TODO: Dataview 接口暂时屏蔽
+      // case "obsidian_dataview_query": {
+      //   const query = args.query as string;
+      //   const result = await this.cdp.safeEvaluate(
+      //     `
+      //       const dv = app.plugins.plugins['dataview'];
+      //       if (!dv) return { error: "Dataview plugin is not installed." };
+      //       if (!dv.api) return { error: "Dataview API is not available. Make sure the plugin is enabled." };
+      //       
+      //       try {
+      //         const result = await dv.api.query(__args.query);
+      //         if (!result.successful) {
+      //           return { error: result.error };
+      //         }
+      //         
+      //         const value = result.value;
+      //         if (value.type === 'list') {
+      //           return {
+      //             type: 'list',
+      //             values: value.values.slice(0, 100).map(v => {
+      //               if (v?.path) return { type: 'file', path: v.path };
+      //               return v;
+      //             })
+      //           };
+      //         } else if (value.type === 'table') {
+      //           return {
+      //             type: 'table',
+      //             headers: value.headers,
+      //             values: value.values.slice(0, 100).map(row => 
+      //               row.map(cell => {
+      //                 if (cell?.path) return { type: 'file', path: cell.path };
+      //                 if (cell?.ts) return cell.toString();
+      //                 return cell;
+      //               })
+      //             )
+      //           };
+      //         } else if (value.type === 'task') {
+      //           return {
+      //             type: 'task',
+      //             values: value.values.slice(0, 100).map(t => ({
+      //               text: t.text,
+      //               completed: t.completed,
+      //               path: t.path,
+      //               line: t.line
+      //             }))
+      //           };
+      //         }
+      //         return value;
+      //       } catch (e) {
+      //         return { error: e.message };
+      //       }
+      //     `,
+      //     { query },
+      //     true
+      //   );
+      //   return {
+      //     content: [{ type: "text", text: JSON.stringify(result) }],
+      //   };
+      // }
 
       case "obsidian_list_folder": {
         const path = (args.path as string) || "";
