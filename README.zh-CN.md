@@ -121,6 +121,7 @@ npm link
 | `obsidian_get_active_file` | 获取当前打开的文件 |
 | `obsidian_read_file` | 读取文件内容 |
 | `obsidian_write_file` | 写入/创建文件 |
+| `obsidian_patch_file` | 部分编辑（查找替换） |
 | `obsidian_search` | 按路径搜索文件 |
 | `obsidian_omnisearch` | 全文搜索（需要 Omnisearch 插件） |
 | `obsidian_open_file` | 打开文件 |

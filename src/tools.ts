@@ -116,6 +116,38 @@ export const toolDefinitions: ToolDefinition[] = [
     },
   },
   {
+    name: "obsidian_patch_file",
+    description: "Apply partial edits to a file using search and replace. More efficient than write_file for small changes as it doesn't require sending the entire file content.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Path to the file relative to vault root",
+        },
+        patches: {
+          type: "array",
+          description: "Array of patch operations to apply in order",
+          items: {
+            type: "object",
+            properties: {
+              old_string: {
+                type: "string",
+                description: "The exact text to find and replace. Must match exactly including whitespace.",
+              },
+              new_string: {
+                type: "string",
+                description: "The text to replace with. Use empty string to delete.",
+              },
+            },
+            required: ["old_string", "new_string"],
+          },
+        },
+      },
+      required: ["path", "patches"],
+    },
+  },
+  {
     name: "obsidian_search",
     description: "Search for files in the Obsidian vault by file path.",
     inputSchema: {
@@ -727,6 +759,84 @@ export class ToolHandler {
               await app.vault.create(path, content);
               return { success: true, action: "created", path };
             }
+          })()
+        `,
+          true
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "obsidian_patch_file": {
+        const path = args.path as string;
+        const patches = args.patches as Array<{ old_string: string; new_string: string }>;
+        const escapedPatches = JSON.stringify(patches);
+        const result = await this.cdp.evaluate(
+          `
+          (async () => {
+            const path = "${path.replace(/"/g, '\\"')}";
+            const patches = ${escapedPatches};
+            
+            const file = app.vault.getAbstractFileByPath(path);
+            if (!file) {
+              return { error: "File not found: " + path };
+            }
+            
+            const originalContent = await app.vault.read(file);
+            
+            // Phase 1: Validate all patches can be applied
+            const failed = [];
+            let validationContent = originalContent;
+            for (let i = 0; i < patches.length; i++) {
+              const patch = patches[i];
+              const oldStr = patch.old_string;
+              
+              if (!validationContent.includes(oldStr)) {
+                failed.push({ 
+                  index: i, 
+                  old_string: oldStr.substring(0, 50) + (oldStr.length > 50 ? '...' : ''), 
+                  reason: "not found" 
+                });
+              } else {
+                // Apply to validation content to handle sequential patches
+                validationContent = validationContent.replace(oldStr, patch.new_string);
+              }
+            }
+            
+            // Strict mode: if any patch fails, abort entirely
+            if (failed.length > 0) {
+              return {
+                success: false,
+                path,
+                applied: 0,
+                failed: failed.length,
+                details: { applied: [], failed },
+                message: "Aborted: all patches must match. No changes were made."
+              };
+            }
+            
+            // Phase 2: All patches validated, apply them
+            let content = originalContent;
+            const applied = [];
+            for (let i = 0; i < patches.length; i++) {
+              const patch = patches[i];
+              content = content.replace(patch.old_string, patch.new_string);
+              applied.push({ 
+                index: i, 
+                old_string: patch.old_string.substring(0, 50) + (patch.old_string.length > 50 ? '...' : '') 
+              });
+            }
+            
+            await app.vault.modify(file, content);
+            
+            return {
+              success: true,
+              path,
+              applied: applied.length,
+              failed: 0,
+              details: { applied, failed: [] }
+            };
           })()
         `,
           true

@@ -121,6 +121,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | `obsidian_get_active_file` | Get currently open file |
 | `obsidian_read_file` | Read file content |
 | `obsidian_write_file` | Write/create file |
+| `obsidian_patch_file` | Apply partial edits using search and replace |
 | `obsidian_search` | Search files by path |
 | `obsidian_omnisearch` | Full-text search (requires Omnisearch plugin) |
 | `obsidian_open_file` | Open file |
