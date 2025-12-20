@@ -114,12 +114,14 @@ describe.skipIf(SKIP_INTEGRATION)("Integration Tests", () => {
   });
 
   describe("ToolHandler - Debug Capabilities", () => {
-    it("should take screenshot", async () => {
+    it("should take screenshot and save to file", async () => {
       const result = await handler.handle("obsidian_screenshot", { format: "png" });
 
-      expect(result.content[0].type).toBe("image");
-      expect(result.content[0].mimeType).toBe("image/png");
-      expect(result.content[0].data).toBeTruthy();
+      expect(result.content[0].type).toBe("text");
+      const parsed = JSON.parse(result.content[0].text!);
+      expect(parsed.success).toBe(true);
+      expect(parsed.path).toBeTruthy();
+      expect(parsed.format).toBe("png");
     });
 
     it("should take JPEG screenshot with quality", async () => {
@@ -128,7 +130,9 @@ describe.skipIf(SKIP_INTEGRATION)("Integration Tests", () => {
         quality: 50,
       });
 
-      expect(result.content[0].mimeType).toBe("image/jpeg");
+      const parsed = JSON.parse(result.content[0].text!);
+      expect(parsed.format).toBe("jpeg");
+      expect(parsed.quality).toBe(50);
     });
 
     it("should execute JavaScript", async () => {

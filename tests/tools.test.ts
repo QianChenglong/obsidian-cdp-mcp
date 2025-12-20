@@ -14,6 +14,8 @@ function createMockCDPClient(overrides: Partial<CDPClient> = {}): CDPClient {
     clearConsoleMessages: vi.fn(),
     getTargets: vi.fn().mockResolvedValue([]),
     findObsidianTarget: vi.fn().mockResolvedValue(null),
+    ensureHelpers: vi.fn().mockResolvedValue(undefined),
+    isConnected: vi.fn().mockReturnValue(true),
     ...overrides,
   } as unknown as CDPClient;
 }
@@ -28,15 +30,15 @@ describe("ToolHandler", () => {
   });
 
   describe("obsidian_screenshot", () => {
-    it("should capture screenshot in default PNG format", async () => {
+    it("should capture screenshot in default webp format and save to file", async () => {
       const result = await handler.handle("obsidian_screenshot", {});
 
-      expect(mockCdp.screenshot).toHaveBeenCalledWith("png", undefined);
-      expect(result.content[0]).toEqual({
-        type: "image",
-        data: "base64imagedata",
-        mimeType: "image/png",
-      });
+      expect(mockCdp.screenshot).toHaveBeenCalledWith("webp", 80);
+      expect(result.content[0].type).toBe("text");
+      const parsed = JSON.parse(result.content[0].text!);
+      expect(parsed.success).toBe(true);
+      expect(parsed.path).toContain("obsidian-screenshot");
+      expect(parsed.format).toBe("webp");
     });
 
     it("should capture screenshot in JPEG format with quality", async () => {
@@ -46,7 +48,8 @@ describe("ToolHandler", () => {
       });
 
       expect(mockCdp.screenshot).toHaveBeenCalledWith("jpeg", 80);
-      expect(result.content[0].mimeType).toBe("image/jpeg");
+      const parsed = JSON.parse(result.content[0].text!);
+      expect(parsed.format).toBe("jpeg");
     });
   });
 
@@ -235,6 +238,7 @@ describe("ToolHandler", () => {
 
       const result = await handler.handle("obsidian_search", { query: "test" });
 
+      expect(mockCdp.ensureHelpers).toHaveBeenCalled();
       const parsed = JSON.parse(result.content[0].text!);
       expect(parsed).toEqual(searchResults);
     });
@@ -244,7 +248,8 @@ describe("ToolHandler", () => {
 
       await handler.handle("obsidian_search", { query: "test", limit: 5 });
 
-      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining(".slice(0, 5)"));
+      expect(mockCdp.ensureHelpers).toHaveBeenCalled();
+      expect(mockCdp.evaluate).toHaveBeenCalledWith(expect.stringContaining("5"));
     });
   });
 
@@ -476,8 +481,8 @@ describe("toolDefinitions", () => {
     expect(toolNames).toContain("obsidian_resolve_link");
   });
 
-  it("should have 32 tools total", () => {
-    expect(toolDefinitions).toHaveLength(32);
+  it("should have 40 tools total", () => {
+    expect(toolDefinitions).toHaveLength(40);
   });
 
   it("should have valid schema for all tools", () => {

@@ -686,7 +686,7 @@ export class ToolHandler {
           content: [
             {
               type: "text",
-              text: JSON.stringify(messages, null, 2),
+              text: JSON.stringify(messages),
             },
           ],
         };
@@ -700,7 +700,7 @@ export class ToolHandler {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result),
             },
           ],
         };
@@ -721,7 +721,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -764,7 +764,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -842,21 +842,21 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
       case "obsidian_search": {
         const query = args.query as string;
         const limit = (args.limit as number) || 20;
-        const result = await this.cdp.evaluate(`
-          app.vault.getFiles()
-            .filter(f => f.path.toLowerCase().includes("${query.toLowerCase().replace(/"/g, '\\"')}"))
-            .slice(0, ${limit})
-            .map(f => ({ path: f.path, name: f.name, extension: f.extension }))
-        `);
+        // Use injected helper for efficient search with early termination
+        await this.cdp.ensureHelpers();
+        const escapedQuery = JSON.stringify(query.toLowerCase());
+        const result = await this.cdp.evaluate(
+          `window.__mcpHelpers.searchFiles(${escapedQuery}, ${limit})`
+        );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -888,7 +888,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -906,7 +906,7 @@ export class ToolHandler {
             }))
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -921,7 +921,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -937,7 +937,7 @@ export class ToolHandler {
             .slice(0, 100)
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -952,7 +952,7 @@ export class ToolHandler {
           })
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -971,7 +971,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1000,7 +1000,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }],
         };
       }
 
@@ -1024,7 +1024,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1053,7 +1053,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1085,7 +1085,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1104,7 +1104,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1133,7 +1133,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1194,7 +1194,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1233,7 +1233,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1252,7 +1252,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1271,7 +1271,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1294,7 +1294,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1315,7 +1315,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1336,7 +1336,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1357,7 +1357,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1377,7 +1377,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1409,7 +1409,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1472,7 +1472,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1491,7 +1491,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1522,7 +1522,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1565,7 +1565,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1633,7 +1633,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1674,7 +1674,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1715,7 +1715,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1748,7 +1748,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1799,7 +1799,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
@@ -1874,7 +1874,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 

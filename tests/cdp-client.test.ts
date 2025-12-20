@@ -4,13 +4,18 @@ import { EventEmitter } from "events";
 // Mock WebSocket
 class MockWebSocket extends EventEmitter {
   static OPEN = 1;
+  static CONNECTING = 0;
+  static CLOSING = 2;
   static CLOSED = 3;
-  readyState = MockWebSocket.OPEN;
+  readyState = MockWebSocket.CONNECTING;
 
   constructor(public url: string, public options?: unknown) {
     super();
     // Simulate connection in next tick
-    setTimeout(() => this.emit("open"), 0);
+    setTimeout(() => {
+      this.readyState = MockWebSocket.OPEN;
+      this.emit("open");
+    }, 0);
   }
 
   send(data: string) {
@@ -42,6 +47,11 @@ class MockWebSocket extends EventEmitter {
   }
 
   close() {
+    this.readyState = MockWebSocket.CLOSED;
+    this.emit("close");
+  }
+
+  terminate() {
     this.readyState = MockWebSocket.CLOSED;
     this.emit("close");
   }
@@ -81,6 +91,15 @@ describe("CDPClient", () => {
       const client = new CDPClient(9333);
       expect(client).toBeDefined();
     });
+
+    it("should accept custom timeout options", () => {
+      const client = new CDPClient(9222, {
+        connectTimeout: 5000,
+        requestTimeout: 15000,
+        fetchTimeout: 3000,
+      });
+      expect(client).toBeDefined();
+    });
   });
 
   describe("getTargets", () => {
@@ -101,7 +120,10 @@ describe("CDPClient", () => {
       const client = new CDPClient();
       const targets = await client.getTargets();
 
-      expect(mockFetch).toHaveBeenCalledWith("http://localhost:9222/json");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:9222/json",
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
       expect(targets).toEqual(mockTargets);
     });
 
@@ -113,7 +135,10 @@ describe("CDPClient", () => {
       const client = new CDPClient(9333);
       await client.getTargets();
 
-      expect(mockFetch).toHaveBeenCalledWith("http://localhost:9333/json");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:9333/json",
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
   });
 
@@ -201,7 +226,7 @@ describe("CDPClient", () => {
     it("should connect with provided WebSocket URL", async () => {
       const client = new CDPClient();
       await client.connect("ws://localhost:9222/devtools/page/123");
-      // Connection successful if no error thrown
+      expect(client.isConnected()).toBe(true);
     });
 
     it("should throw error when no Obsidian target found", async () => {
@@ -218,6 +243,7 @@ describe("CDPClient", () => {
       await client.connect("ws://localhost:9222/devtools/page/123");
       // Second connect should return immediately
       await client.connect("ws://localhost:9222/devtools/page/123");
+      expect(client.isConnected()).toBe(true);
     });
   });
 
@@ -261,13 +287,26 @@ describe("CDPClient", () => {
       const client = new CDPClient();
       await client.connect("ws://localhost:9222/devtools/page/123");
       client.disconnect();
-      // No error means success
+      expect(client.isConnected()).toBe(false);
     });
 
     it("should handle disconnect when not connected", () => {
       const client = new CDPClient();
       client.disconnect();
-      // No error means success
+      expect(client.isConnected()).toBe(false);
+    });
+  });
+
+  describe("isConnected", () => {
+    it("should return false when not connected", () => {
+      const client = new CDPClient();
+      expect(client.isConnected()).toBe(false);
+    });
+
+    it("should return true when connected", async () => {
+      const client = new CDPClient();
+      await client.connect("ws://localhost:9222/devtools/page/123");
+      expect(client.isConnected()).toBe(true);
     });
   });
 });
