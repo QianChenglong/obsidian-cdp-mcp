@@ -1042,14 +1042,17 @@ export class ToolHandler {
             if (!file) return { error: "File not found: " + path };
             const backlinks = app.metadataCache.getBacklinksForFile(file);
             if (!backlinks) return { path, backlinks: [] };
-            const data = backlinks.data;
+            const keys = Array.from(backlinks.keys());
             return {
               path,
-              backlinks: Object.entries(data).map(([filePath, links]) => ({
-                file: filePath,
-                count: links.length,
-                positions: links.slice(0, 5).map(l => ({ line: l.position?.start?.line, col: l.position?.start?.col }))
-              }))
+              backlinks: keys.map(filePath => {
+                const links = backlinks.get(filePath) || [];
+                return {
+                  file: filePath,
+                  count: links.length,
+                  positions: links.slice(0, 5).map(l => ({ line: l.position?.start?.line, col: l.position?.start?.col }))
+                };
+              })
             };
           `,
           { path },
