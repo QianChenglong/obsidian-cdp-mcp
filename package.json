@@ -1,6 +1,6 @@
 {
   "name": "obsidian-cdp-mcp",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "MCP Server for Obsidian via Chrome DevTools Protocol",
   "type": "module",
   "main": "dist/index.js",
