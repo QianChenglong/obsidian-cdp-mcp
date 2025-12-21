@@ -148,6 +148,7 @@ npm link
 | 工具 | 说明 |
 |:---|:---|
 | `obsidian_get_tags` | 获取标签（全库或单文件） |
+| `obsidian_search_by_tag` | 按标签搜索文件（支持嵌套标签） |
 | `obsidian_get_frontmatter` | 获取文件 frontmatter/YAML |
 | `obsidian_update_frontmatter` | 更新 frontmatter 属性 |
 | `obsidian_get_all_properties` | 获取库中所有属性名 |

@@ -148,6 +148,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | Tool | Description |
 |:---|:---|
 | `obsidian_get_tags` | Get tags (vault-wide or per file) |
+| `obsidian_search_by_tag` | Search files by tag (supports nested tags) |
 | `obsidian_get_frontmatter` | Get file frontmatter/YAML |
 | `obsidian_update_frontmatter` | Update frontmatter properties |
 | `obsidian_get_all_properties` | Get all property names in vault |

@@ -313,6 +313,24 @@ export const toolDefinitions: ToolDefinition[] = [
     },
   },
   {
+    name: "obsidian_search_by_tag",
+    description: "Search for files containing a specific tag.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tag: {
+          type: "string",
+          description: "Tag to search for (with or without #, e.g., '#todo' or 'todo')",
+        },
+        include_nested: {
+          type: "boolean",
+          description: "Include nested tags (e.g., #todo/experiment matches #todo). Default: true",
+        },
+      },
+      required: ["tag"],
+    },
+  },
+  {
     name: "obsidian_get_frontmatter",
     description: "Get the frontmatter (YAML metadata) of a file.",
     inputSchema: {
@@ -1092,6 +1110,67 @@ export class ToolHandler {
             }
           `,
           { path },
+          false
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result) }],
+        };
+      }
+
+      case "obsidian_search_by_tag": {
+        const tag = args.tag as string;
+        const includeNested = args.include_nested !== false;
+        const result = await this.cdp.safeEvaluate(
+          `
+            const { tag, includeNested } = __args;
+            // Normalize tag: ensure it starts with #
+            const normalizedTag = tag.startsWith('#') ? tag : '#' + tag;
+            
+            const files = [];
+            const allFiles = app.vault.getMarkdownFiles();
+            
+            for (const file of allFiles) {
+              const cache = app.metadataCache.getFileCache(file);
+              if (!cache) continue;
+              
+              // Get tags from content (#tag in body)
+              const contentTags = cache.tags?.map(t => t.tag) || [];
+              
+              // Get tags from frontmatter
+              let frontmatterTags = cache.frontmatter?.tags || [];
+              if (!Array.isArray(frontmatterTags)) {
+                frontmatterTags = [frontmatterTags];
+              }
+              // Normalize frontmatter tags (they may not have #)
+              frontmatterTags = frontmatterTags.map(t => t.startsWith('#') ? t : '#' + t);
+              
+              const allTags = [...contentTags, ...frontmatterTags];
+              
+              const matches = includeNested 
+                ? allTags.some(t => t === normalizedTag || t.startsWith(normalizedTag + '/'))
+                : allTags.some(t => t === normalizedTag);
+              
+              if (matches) {
+                files.push({
+                  path: file.path,
+                  basename: file.basename,
+                  tags: [...new Set(allTags.filter(t => 
+                    includeNested 
+                      ? (t === normalizedTag || t.startsWith(normalizedTag + '/'))
+                      : t === normalizedTag
+                  ))]
+                });
+              }
+            }
+            
+            return {
+              tag: normalizedTag,
+              includeNested,
+              count: files.length,
+              files
+            };
+          `,
+          { tag, includeNested },
           false
         );
         return {
