@@ -1298,13 +1298,14 @@ export class ToolHandler {
       case "obsidian_list_folder": {
         const path = (args.path as string) || "";
         const recursive = args.recursive as boolean;
+        // Normalize path on server side to avoid regex escaping issues in CDP eval
+        const normalizedPath = path.replace(/^\/+/, "");
         const result = await this.cdp.safeEvaluate(
           `
-            const { path, recursive } = __args;
-            const normalizedPath = path.replace(/^\/+/, '');
+            const { normalizedPath, recursive } = __args;
             const folder = normalizedPath ? app.vault.getAbstractFileByPath(normalizedPath) : app.vault.getRoot();
-            if (!folder) return { error: "Folder not found: " + path };
-            if (!folder.children) return { error: "Not a folder: " + path };
+            if (!folder) return { error: "Folder not found: " + normalizedPath };
+            if (!folder.children) return { error: "Not a folder: " + normalizedPath };
             
             const listFolder = (f, recurse) => {
               return f.children.map(child => {
@@ -1329,7 +1330,7 @@ export class ToolHandler {
               contents: listFolder(folder, recursive)
             };
           `,
-          { path, recursive },
+          { normalizedPath, recursive },
           false
         );
         return {
