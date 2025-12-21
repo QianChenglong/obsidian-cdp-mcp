@@ -167,13 +167,21 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "obsidian_omnisearch",
-    description: "Full-text search in Obsidian vault using Omnisearch plugin. Returns ranked results with excerpts and match positions. Requires Omnisearch plugin to be installed and enabled.",
+    description: `Full-text search in Obsidian vault using Omnisearch plugin. Returns ranked results with excerpts.
+
+Search tips:
+- Single keyword for broad search: "kubernetes" or "L2"
+- Multiple keywords (AND logic): "kubernetes pod" matches notes with both words
+- Quotes for exact phrase: "Layer 2 network"
+- Start simple, then narrow down: search "网络" first, then "二层 网络"
+
+Requires Omnisearch plugin to be installed and enabled.`,
     inputSchema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Search query (supports full-text search with fuzzy matching)",
+          description: "Search query. Use single keyword for broad search, multiple words for AND matching, quotes for exact phrase. Supports Chinese/English.",
         },
         limit: {
           type: "number",
