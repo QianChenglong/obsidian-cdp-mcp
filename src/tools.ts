@@ -117,7 +117,16 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "obsidian_patch_file",
-    description: "Apply partial edits to a file using search and replace. More efficient than write_file for small changes as it doesn't require sending the entire file content.",
+    description: `Apply partial edits to a file using search and replace. More efficient than write_file for small changes as it doesn't require sending the entire file content.
+
+IMPORTANT: Before calling this tool, you MUST first output a diff visualization in your response to show the user what changes will be made. Use this format:
+
+\`\`\`diff
+- old line to be removed
++ new line to be added
+\`\`\`
+
+This helps the user understand the changes before they are applied.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -844,18 +853,31 @@ export class ToolHandler {
               content = content.replace(patch.old_string, patch.new_string);
               applied.push({ 
                 index: i, 
-                old_string: patch.old_string.substring(0, 50) + (patch.old_string.length > 50 ? '...' : '') 
+                old_string: patch.old_string,
+                new_string: patch.new_string
               });
             }
             
             await app.vault.modify(file, content);
             
+            // Generate diff output for visibility
+            const diffLines = [];
+            for (const p of applied) {
+              const oldLines = p.old_string.split('\\n');
+              const newLines = p.new_string.split('\\n');
+              for (const line of oldLines) {
+                diffLines.push('- ' + line);
+              }
+              for (const line of newLines) {
+                diffLines.push('+ ' + line);
+              }
+            }
+            
             return {
               success: true,
               path,
               applied: applied.length,
-              failed: 0,
-              details: { applied, failed: [] }
+              diff: diffLines.join('\\n')
             };
           `,
           { path, patches },
