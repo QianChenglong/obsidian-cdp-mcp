@@ -1697,17 +1697,47 @@ export class ToolHandler {
         const result = await this.cdp.safeEvaluate(
           `
             const { pluginId, enable } = __args;
+            
+            // Helper: fetch with redirect following using Node.js https module
+            // This is needed because browser fetch fails on cross-origin redirects from GitHub releases
+            function nodeFetch(url, maxRedirects = 5) {
+              const https = require('https');
+              return new Promise((resolve, reject) => {
+                if (maxRedirects <= 0) {
+                  return reject(new Error('Too many redirects'));
+                }
+                
+                https.get(url, (res) => {
+                  if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                    nodeFetch(res.headers.location, maxRedirects - 1).then(resolve).catch(reject);
+                  } else if (res.statusCode >= 200 && res.statusCode < 300) {
+                    let data = '';
+                    res.on('data', chunk => data += chunk);
+                    res.on('end', () => resolve({ ok: true, status: res.statusCode, text: () => Promise.resolve(data), json: () => Promise.resolve(JSON.parse(data)) }));
+                  } else {
+                    resolve({ ok: false, status: res.statusCode });
+                  }
+                }).on('error', reject);
+              });
+            }
+            
             try {
               // Check if already installed
-              if (app.plugins.manifests[pluginId]) {
+              const isInstalled = (pluginId in app.plugins.manifests) || (pluginId in app.plugins.plugins);
+              if (isInstalled) {
+                const manifest = app.plugins.manifests[pluginId];
                 return { 
-                  error: "Plugin is already installed: " + pluginId,
-                  installed: true,
-                  enabled: app.plugins.enabledPlugins.has(pluginId)
+                  success: true,
+                  id: pluginId,
+                  name: manifest?.name || pluginId,
+                  version: manifest?.version || 'unknown',
+                  alreadyInstalled: true,
+                  enabled: app.plugins.enabledPlugins.has(pluginId),
+                  message: "Plugin is already installed"
                 };
               }
               
-              // Fetch plugin list to get repo info
+              // Fetch plugin list to get repo info (this URL works fine with fetch)
               const response = await fetch('https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json');
               const plugins = await response.json();
               const plugin = plugins.find(p => p.id === pluginId);
@@ -1716,19 +1746,22 @@ export class ToolHandler {
                 return { error: "Plugin not found in community repository: " + pluginId };
               }
               
-              // Fetch latest release info
+              // Fetch latest release info (GitHub API works fine with fetch)
               const releaseResponse = await fetch('https://api.github.com/repos/' + plugin.repo + '/releases/latest');
               if (!releaseResponse.ok) {
                 return { error: "Failed to fetch release info: " + releaseResponse.status };
               }
               const release = await releaseResponse.json();
               
-              // Fetch manifest from release
+              // Fetch manifest from release using Node.js (GitHub release assets redirect to CDN)
               const manifestAsset = release.assets.find(a => a.name === 'manifest.json');
               if (!manifestAsset) {
                 return { error: "No manifest.json found in latest release" };
               }
-              const manifestResponse = await fetch(manifestAsset.browser_download_url);
+              const manifestResponse = await nodeFetch(manifestAsset.browser_download_url);
+              if (!manifestResponse.ok) {
+                return { error: "Failed to download manifest: " + manifestResponse.status };
+              }
               const manifest = await manifestResponse.json();
               
               // Install the plugin
@@ -1747,7 +1780,7 @@ export class ToolHandler {
                 enabled: enable
               };
             } catch (e) {
-              return { error: e.message };
+              return { error: "Installation failed: " + e.message };
             }
           `,
           { pluginId, enable },
