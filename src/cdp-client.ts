@@ -308,28 +308,42 @@ export class CDPClient {
     const helperCode = `
       if (!window.__mcpHelpers) {
         window.__mcpHelpers = {
-          // Check if path matches user ignore filters (glob patterns)
+          // Check if path matches user ignore filters
+          // Supports both regex patterns (/pattern/flags) and glob patterns
           isIgnored: (path) => {
-            const ignoreStr = app.vault.config.userIgnoreFilters;
-            if (!ignoreStr) return false;
+            const ignoreFilters = app.vault.config.userIgnoreFilters;
+            if (!ignoreFilters) return false;
             
-            const patterns = ignoreStr.split('\\n').filter(p => p.trim());
+            // Handle both array (new format) and string (old format)
+            const patterns = Array.isArray(ignoreFilters) 
+              ? ignoreFilters 
+              : ignoreFilters.split('\\n').filter(p => p.trim());
+            
             for (const pattern of patterns) {
-              const p = pattern.trim();
-              if (!p) continue;
+              if (!pattern) continue;
               
-              // Simple glob matching
-              // Escape regex special chars, then convert glob * and ** to regex
-              let regex = p
-                .replace(/[-\\/\\\\^$+?.()|[\\]{}]/g, '\\\\$&')  // Escape special chars
-                .replace(/\\*\\*/g, '.*')                         // ** matches anything
-                .replace(/\\*/g, '[^/]*');                        // * matches non-slash
-              
-              // Match the pattern anywhere in path
-              try {
-                if (new RegExp('(^|/)' + regex + '(/|$)').test(path)) return true;
-              } catch (e) {
-                // Invalid pattern, skip
+              // Check if it's a regex pattern /pattern/flags
+              if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+                const lastSlash = pattern.lastIndexOf('/');
+                const regexStr = pattern.slice(1, lastSlash);
+                const flags = pattern.slice(lastSlash + 1);
+                try {
+                  if (new RegExp(regexStr, flags).test(path)) return true;
+                } catch (e) {
+                  // Invalid regex, skip
+                }
+              } else {
+                // Glob pattern - convert to regex
+                let regex = pattern
+                  .replace(/[-\\/\\\\^$+?.()|[\\]{}]/g, '\\\\$&')
+                  .replace(/\\*\\*/g, '.*')
+                  .replace(/\\*/g, '[^/]*');
+                
+                try {
+                  if (new RegExp('(^|/)' + regex + '(/|$)').test(path)) return true;
+                } catch (e) {
+                  // Invalid pattern, skip
+                }
               }
             }
             return false;
