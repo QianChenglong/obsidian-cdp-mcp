@@ -304,18 +304,48 @@ export class CDPClient {
   async ensureHelpers(): Promise<void> {
     if (this.helpersInjected) return;
 
-    await this.evaluate(
-      `
+    // Use String.raw to avoid escaping issues with regex in template literals
+    const helperCode = `
       if (!window.__mcpHelpers) {
         window.__mcpHelpers = {
+          // Check if path matches user ignore filters (glob patterns)
+          isIgnored: (path) => {
+            const ignoreStr = app.vault.config.userIgnoreFilters;
+            if (!ignoreStr) return false;
+            
+            const patterns = ignoreStr.split('\\n').filter(p => p.trim());
+            for (const pattern of patterns) {
+              const p = pattern.trim();
+              if (!p) continue;
+              
+              // Simple glob matching
+              // Escape regex special chars, then convert glob * and ** to regex
+              let regex = p
+                .replace(/[-\\/\\\\^$+?.()|[\\]{}]/g, '\\\\$&')  // Escape special chars
+                .replace(/\\*\\*/g, '.*')                         // ** matches anything
+                .replace(/\\*/g, '[^/]*');                        // * matches non-slash
+              
+              // Match the pattern anywhere in path
+              try {
+                if (new RegExp('(^|/)' + regex + '(/|$)').test(path)) return true;
+              } catch (e) {
+                // Invalid pattern, skip
+              }
+            }
+            return false;
+          },
+          
           // Efficient file search with early termination and optional path filter
           searchFiles: (query, pathFilter, limit) => {
             const q = query.toLowerCase();
             const results = [];
             const files = app.vault.getFiles();
+            const isIgnored = window.__mcpHelpers.isIgnored;
             for (const f of files) {
               // Skip if path filter is set and file is not under that path
               if (pathFilter && !f.path.startsWith(pathFilter)) continue;
+              // Skip ignored files
+              if (isIgnored(f.path)) continue;
               if (f.path.toLowerCase().includes(q)) {
                 results.push({ path: f.path, name: f.name, extension: f.extension });
                 if (results.length >= limit) break;
@@ -329,9 +359,12 @@ export class CDPClient {
             const q = query.toLowerCase();
             const results = [];
             const allFiles = app.vault.getAllLoadedFiles();
+            const isIgnored = window.__mcpHelpers.isIgnored;
             for (const f of allFiles) {
               // Only folders have children property
               if (!f.children) continue;
+              // Skip ignored folders
+              if (isIgnored(f.path)) continue;
               if (f.path.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)) {
                 results.push({ 
                   path: f.path, 
@@ -359,9 +392,9 @@ export class CDPClient {
         };
       }
       true
-    `,
-      false
-    );
+    `;
+    
+    await this.evaluate(helperCode, false);
 
     this.helpersInjected = true;
   }
