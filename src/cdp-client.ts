@@ -308,14 +308,36 @@ export class CDPClient {
       `
       if (!window.__mcpHelpers) {
         window.__mcpHelpers = {
-          // Efficient file search with early termination
-          searchFiles: (query, limit) => {
+          // Efficient file search with early termination and optional path filter
+          searchFiles: (query, pathFilter, limit) => {
             const q = query.toLowerCase();
             const results = [];
             const files = app.vault.getFiles();
             for (const f of files) {
+              // Skip if path filter is set and file is not under that path
+              if (pathFilter && !f.path.startsWith(pathFilter)) continue;
               if (f.path.toLowerCase().includes(q)) {
                 results.push({ path: f.path, name: f.name, extension: f.extension });
+                if (results.length >= limit) break;
+              }
+            }
+            return results;
+          },
+          
+          // Search folders by name or path
+          searchFolders: (query, limit) => {
+            const q = query.toLowerCase();
+            const results = [];
+            const allFiles = app.vault.getAllLoadedFiles();
+            for (const f of allFiles) {
+              // Only folders have children property
+              if (!f.children) continue;
+              if (f.path.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)) {
+                results.push({ 
+                  path: f.path, 
+                  name: f.name,
+                  childCount: f.children.length
+                });
                 if (results.length >= limit) break;
               }
             }

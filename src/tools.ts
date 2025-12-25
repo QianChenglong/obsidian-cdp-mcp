@@ -166,6 +166,28 @@ This helps the user understand the changes before they are applied.`,
           type: "string",
           description: "Search query (matches file path)",
         },
+        path: {
+          type: "string",
+          description: "Limit search to files under this folder path (optional)",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of results (default: 20)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "obsidian_search_folders",
+    description: "Search for folders in the Obsidian vault by name or path.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query (matches folder name or path)",
+        },
         limit: {
           type: "number",
           description: "Maximum number of results (default: 20)",
@@ -182,6 +204,7 @@ Search tips:
 - Single keyword for broad search: "kubernetes" or "L2"
 - Multiple keywords (AND logic): "kubernetes pod" matches notes with both words
 - Quotes for exact phrase: "Layer 2 network"
+- AND-OR syntax: "CoreDNS AND (log OR rewrite OR autopath)" matches notes with CoreDNS AND at least one of the optional keywords
 - Start simple, then narrow down: search "网络" first, then "二层 网络"
 
 Requires Omnisearch plugin to be installed and enabled.`,
@@ -190,7 +213,7 @@ Requires Omnisearch plugin to be installed and enabled.`,
       properties: {
         query: {
           type: "string",
-          description: "Search query. Use single keyword for broad search, multiple words for AND matching, quotes for exact phrase. Supports Chinese/English.",
+          description: "Search query. Supports: single keyword, multiple words (AND), quotes for exact phrase, AND-OR syntax like 'A AND (B OR C OR D)'. Supports Chinese/English.",
         },
         limit: {
           type: "number",
@@ -669,6 +692,15 @@ Requires Omnisearch plugin to be installed and enabled.`,
   },
 ];
 
+/**
+ * Safely stringify a value for MCP response.
+ * Handles undefined/null cases that would cause JSON.stringify to return undefined.
+ */
+function safeStringify(value: unknown): string {
+  const result = JSON.stringify(value);
+  return result !== undefined ? result : "null";
+}
+
 export class ToolHandler {
   constructor(private cdp: CDPClient) {}
 
@@ -736,7 +768,7 @@ export class ToolHandler {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result),
+              text: safeStringify(result),
             },
           ],
         };
@@ -757,7 +789,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -796,7 +828,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -884,28 +916,133 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
       case "obsidian_search": {
         const query = args.query as string;
+        const path = (args.path as string) || "";
         const limit = (args.limit as number) || 20;
         // Use injected helper for efficient search with early termination
         await this.cdp.ensureHelpers();
         const result = await this.cdp.safeEvaluate(
-          `return window.__mcpHelpers.searchFiles(__args.query.toLowerCase(), __args.limit);`,
+          `return window.__mcpHelpers.searchFiles(__args.query.toLowerCase(), __args.path, __args.limit);`,
+          { query, path, limit },
+          false
+        );
+        return {
+          content: [{ type: "text", text: safeStringify(result) }],
+        };
+      }
+
+      case "obsidian_search_folders": {
+        const query = args.query as string;
+        const limit = (args.limit as number) || 20;
+        await this.cdp.ensureHelpers();
+        const result = await this.cdp.safeEvaluate(
+          `return window.__mcpHelpers.searchFolders(__args.query.toLowerCase(), __args.limit);`,
           { query, limit },
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
       case "obsidian_omnisearch": {
         const query = args.query as string;
         const limit = (args.limit as number) || 10;
+        
+        // Check if query uses AND-OR syntax: "A AND (B OR C OR D)"
+        const andOrMatch = query.match(/^(.+?)\s+AND\s+\((.+)\)$/i);
+        
+        if (andOrMatch) {
+          // AND-OR mode: split into parallel searches
+          const primary = andOrMatch[1].trim();
+          const optionals = andOrMatch[2].split(/\s+OR\s+/i).map(s => s.trim()).filter(s => s);
+          
+          const result = await this.cdp.safeEvaluate(
+            `
+              const omnisearch = app.plugins.plugins['omnisearch'];
+              if (!omnisearch) {
+                return { error: "Omnisearch plugin is not installed. Please install it from Obsidian community plugins." };
+              }
+              if (!omnisearch.api) {
+                return { error: "Omnisearch API is not available. Please make sure Omnisearch plugin is enabled." };
+              }
+              
+              const primary = __args.primary;
+              const optionals = __args.optionals;
+              const limit = __args.limit;
+              
+              // Parallel search for each optional keyword
+              const searchResults = await Promise.all(
+                optionals.map(kw => omnisearch.api.search(primary + ' ' + kw))
+              );
+              
+              // Merge results
+              const allResults = new Map();
+              optionals.forEach((kw, i) => {
+                for (const r of searchResults[i]) {
+                  if (!allResults.has(r.path)) {
+                    allResults.set(r.path, {
+                      path: r.path,
+                      basename: r.basename,
+                      omnisearchScore: r.score,
+                      matched: new Set(),
+                      excerpt: r.excerpt,
+                      foundWords: r.foundWords || []
+                    });
+                  }
+                  const entry = allResults.get(r.path);
+                  entry.matched.add(kw);
+                  // Keep highest Omnisearch score
+                  if (r.score > entry.omnisearchScore) {
+                    entry.omnisearchScore = r.score;
+                    entry.excerpt = r.excerpt;
+                  }
+                  // Merge foundWords
+                  if (r.foundWords) {
+                    for (const w of r.foundWords) {
+                      if (!entry.foundWords.includes(w)) {
+                        entry.foundWords.push(w);
+                      }
+                    }
+                  }
+                }
+              });
+              
+              // Convert to array with Omnisearch score
+              const results = Array.from(allResults.values()).map(r => ({
+                path: r.path,
+                basename: r.basename,
+                score: Math.round(r.omnisearchScore),
+                matchedKeywords: Array.from(r.matched),
+                foundWords: r.foundWords,
+                excerpt: r.excerpt
+              }));
+              
+              // Sort by Omnisearch score (descending)
+              results.sort((a, b) => b.score - a.score);
+              
+              return {
+                mode: 'and-or',
+                primary,
+                optionals,
+                total: results.length,
+                results: results.slice(0, limit)
+              };
+            `,
+            { primary, optionals, limit },
+            true
+          );
+          return {
+            content: [{ type: "text", text: safeStringify(result) }],
+          };
+        }
+        
+        // Standard mode: direct Omnisearch call
         const result = await this.cdp.safeEvaluate(
           `
             const omnisearch = app.plugins.plugins['omnisearch'];
@@ -929,7 +1066,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -951,7 +1088,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -968,7 +1105,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -986,7 +1123,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1001,7 +1138,7 @@ export class ToolHandler {
           })
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1020,7 +1157,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1081,7 +1218,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1113,7 +1250,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1146,7 +1283,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1207,7 +1344,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1229,7 +1366,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1256,7 +1393,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1316,7 +1453,7 @@ export class ToolHandler {
       //     true
       //   );
       //   return {
-      //     content: [{ type: "text", text: JSON.stringify(result) }],
+      //     content: [{ type: "text", text: safeStringify(result) }],
       //   };
       // }
 
@@ -1359,7 +1496,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1377,7 +1514,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1396,7 +1533,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1419,7 +1556,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1440,7 +1577,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1462,7 +1599,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1484,7 +1621,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1504,7 +1641,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1536,7 +1673,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1596,7 +1733,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1615,7 +1752,7 @@ export class ToolHandler {
           })()
         `);
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1646,7 +1783,7 @@ export class ToolHandler {
           false
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1687,7 +1824,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1787,7 +1924,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1827,7 +1964,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1867,7 +2004,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1899,7 +2036,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -1949,7 +2086,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 
@@ -2020,7 +2157,7 @@ export class ToolHandler {
           true
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content: [{ type: "text", text: safeStringify(result) }],
         };
       }
 

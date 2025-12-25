@@ -122,7 +122,8 @@ npm link
 | `obsidian_read_file` | 读取文件内容 |
 | `obsidian_write_file` | 写入/创建文件 |
 | `obsidian_patch_file` | 部分编辑（查找替换） |
-| `obsidian_search` | 按路径搜索文件 |
+| `obsidian_search` | 按路径搜索文件（支持 `path` 参数限定范围） |
+| `obsidian_search_folders` | 按名称或路径搜索文件夹 |
 | `obsidian_omnisearch` | 全文搜索（需要 Omnisearch 插件） |
 | `obsidian_open_file` | 打开文件 |
 
@@ -231,6 +232,24 @@ npm link
 {
   "name": "obsidian_search",
   "arguments": { "query": "mcp", "limit": 10 }
+}
+```
+
+### 在指定目录下搜索文件
+
+```json
+{
+  "name": "obsidian_search",
+  "arguments": { "query": "config", "path": "技术/kubernetes", "limit": 10 }
+}
+```
+
+### 搜索文件夹
+
+```json
+{
+  "name": "obsidian_search_folders",
+  "arguments": { "query": "work", "limit": 10 }
 }
 ```
 

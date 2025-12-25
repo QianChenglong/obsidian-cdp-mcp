@@ -122,7 +122,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | `obsidian_read_file` | Read file content |
 | `obsidian_write_file` | Write/create file |
 | `obsidian_patch_file` | Apply partial edits using search and replace |
-| `obsidian_search` | Search files by path |
+| `obsidian_search` | Search files by path (supports `path` param to limit scope) |
+| `obsidian_search_folders` | Search folders by name or path |
 | `obsidian_omnisearch` | Full-text search (requires Omnisearch plugin) |
 | `obsidian_open_file` | Open file |
 
@@ -231,6 +232,24 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "name": "obsidian_search",
   "arguments": { "query": "mcp", "limit": 10 }
+}
+```
+
+### Search Files in Specific Folder
+
+```json
+{
+  "name": "obsidian_search",
+  "arguments": { "query": "config", "path": "技术/kubernetes", "limit": 10 }
+}
+```
+
+### Search Folders
+
+```json
+{
+  "name": "obsidian_search_folders",
+  "arguments": { "query": "work", "limit": 10 }
 }
 ```
 
